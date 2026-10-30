@@ -97,7 +97,7 @@ else
     URL="https://github.com/$REPO/releases/download/$VERSION/$ASSET"
   fi
   info "Downloading $URL"
-  curl -fL --retry 3 -o "$TMP/$ASSET" "$URL" || die "Download failed. Does the release exist at https://github.com/$REPO/releases ?"
+  curl -fsSL --retry 3 -o "$TMP/$ASSET" "$URL" || die "Download failed. Does the release exist at https://github.com/$REPO/releases ?"
 fi
 mkdir -p "$TMP/app"
 tar -xzf "$TMP/$ASSET" -C "$TMP/app" --strip-components=1
