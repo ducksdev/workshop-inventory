@@ -41,6 +41,7 @@ export const FREE_LIMITS = {
   maxChannels: 0,       // notification channels (SMTP/Discord/...) are a paid feature
   csvImportExport: false,
   maxProjects: 3,
+  maxEquipment: 3,
 };
 
 export const PRO_LIMITS = {
@@ -48,6 +49,7 @@ export const PRO_LIMITS = {
   maxChannels: Infinity,
   csvImportExport: true,
   maxProjects: Infinity,
+  maxEquipment: Infinity,
 };
 
 export interface LicenseStatus {

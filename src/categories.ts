@@ -27,6 +27,8 @@ export interface Category {
   defaultUnit: string;
   fields: Field[];
   buildName: (a: Record<string, string>) => string;
+  /** Attribute keys that must match for an item to count as a compatible spare for a fitted part. */
+  compatKeys?: string[];
 }
 
 const num = (v: string | undefined) => (v && v.trim() !== '' ? v.trim().replace(/\.0+$/, '') : '');
@@ -60,6 +62,7 @@ export const CATEGORIES: Category[] = [
     label: 'Cutting tools',
     icon: '🪛',
     defaultUnit: 'pcs',
+    compatKeys: ['shank'],
     fields: [
       {
         key: 'tool_type', label: 'Tool type', type: 'select',
@@ -85,6 +88,7 @@ export const CATEGORIES: Category[] = [
     label: '3D printer nozzles',
     icon: '🔥',
     defaultUnit: 'pcs',
+    compatKeys: ['mount', 'filament_dia'],
     fields: [
       { key: 'diameter', label: 'Orifice', type: 'number', unit: 'mm', placeholder: '0.4' },
       {
@@ -109,6 +113,7 @@ export const CATEGORIES: Category[] = [
     label: 'Filament & resin',
     icon: '🧵',
     defaultUnit: 'g',
+    compatKeys: ['diameter'],
     fields: [
       { key: 'material', label: 'Material', type: 'select', options: ['PLA', 'PLA+', 'PETG', 'ABS', 'ASA', 'TPU', 'Nylon', 'PC', 'PA-CF', 'PETG-CF', 'PLA-CF', 'PVA', 'HIPS', 'Resin (standard)', 'Resin (tough)', 'Resin (flexible)', 'Other'] },
       { key: 'color', label: 'Colour', type: 'text', placeholder: 'Galaxy Black' },
@@ -176,5 +181,16 @@ export function categoryOrDefault(key: string | undefined): Category {
 
 /** Public, serialisable view of the categories (without the name builder functions). */
 export function categoriesForClient() {
-  return CATEGORIES.map(({ key, label, icon, defaultUnit, fields }) => ({ key, label, icon, defaultUnit, fields }));
+  return CATEGORIES.map(({ key, label, icon, defaultUnit, fields, compatKeys }) => ({ key, label, icon, defaultUnit, fields, compatKeys: compatKeys || [] }));
 }
+
+/** Equipment kinds, with icons and the part slots we suggest for each. */
+export const EQUIPMENT_KINDS = [
+  { key: 'printer', label: '3D printer', icon: '🖨️', slots: ['Nozzle', 'Bed surface', 'PTFE tube', 'Belts', 'Filament loaded', 'Extruder gears', 'Fan'] },
+  { key: 'cnc', label: 'CNC router / mill', icon: '⚙️', slots: ['Bit / end mill', 'Collet', 'Spoilboard', 'Spindle brushes', 'Belts'] },
+  { key: 'laser', label: 'Laser cutter / engraver', icon: '🔦', slots: ['Lens', 'Mirror', 'Nozzle', 'Honeycomb bed', 'Tube'] },
+  { key: 'soldering', label: 'Soldering / electronics', icon: '🔌', slots: ['Tip', 'Sponge', 'Heater'] },
+  { key: 'power_tool', label: 'Power tool', icon: '🪚', slots: ['Blade / disc', 'Bit', 'Battery', 'Brushes', 'Sandpaper'] },
+  { key: 'hand_tool', label: 'Hand tool', icon: '🔧', slots: ['Blade', 'Bit'] },
+  { key: 'other', label: 'Other equipment', icon: '🧰', slots: ['Consumable'] },
+];

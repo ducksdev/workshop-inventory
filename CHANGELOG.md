@@ -3,6 +3,14 @@
 Release notes shown to users in **Settings → Updates**. Add a section for each version before running `npm version …`.
 Keep it in plain language — users read this to decide whether to update.
 
+## 1.1.0
+
+- **Equipment.** New section for your 3D printers, CNC, laser, soldering gear and tools: make/model/serial, location, purchase info, status and a run-hours counter you bump after each session.
+- **Fitted parts.** Record what's in each machine — nozzle, bed surface, bit, collet… Fitting takes the part from stock; swapping retires the old one into the machine's history. Each slot shows how many *compatible* spares you have (e.g. only MK8 nozzles for an MK8 hotend).
+- **Maintenance.** Tasks with an interval in hours and/or days ("Lubricate Z every 200 h", "Clean bed every 7 days"). Due tasks appear on the dashboard, in Alerts, and go to your notification channels like low stock. Mark done to reset.
+- Per-machine log of fits, removals, hours and notes. Items show which machine they're fitted in.
+- Free version includes up to 3 pieces of equipment.
+
 ## 1.0.4
 
 - Side-by-side cards (Settings, Dashboard, Orders) now line up at the top.

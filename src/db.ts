@@ -117,8 +117,80 @@ CREATE TABLE IF NOT EXISTS alerts (
 // function here. Each runs once, in order, tracked by SQLite's user_version pragma, so
 // `workshop-inventory update` is always safe to run on an older data file.
 const MIGRATIONS: Array<(db: Database.Database) => void> = [
-  // v1 → example for the future:
-  // (db) => { db.exec("ALTER TABLE items ADD COLUMN barcode TEXT NOT NULL DEFAULT ''"); },
+  // 1 (v1.1.0): equipment, fitted parts, maintenance; alerts can now point at equipment
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS equipment (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        name          TEXT NOT NULL,
+        kind          TEXT NOT NULL DEFAULT 'other',  -- printer | cnc | laser | soldering | power_tool | hand_tool | other
+        make          TEXT NOT NULL DEFAULT '',
+        model         TEXT NOT NULL DEFAULT '',
+        serial        TEXT NOT NULL DEFAULT '',
+        purchase_date TEXT,
+        purchase_cost REAL,
+        location_id   INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+        status        TEXT NOT NULL DEFAULT 'active',  -- active | attention | down | retired
+        hours         REAL NOT NULL DEFAULT 0,          -- run-hours counter
+        url           TEXT NOT NULL DEFAULT '',         -- manual / product page
+        notes         TEXT NOT NULL DEFAULT '',
+        created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS equipment_parts (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        equipment_id  INTEGER NOT NULL REFERENCES equipment(id) ON DELETE CASCADE,
+        item_id       INTEGER REFERENCES items(id) ON DELETE SET NULL,
+        item_name     TEXT NOT NULL DEFAULT '',         -- kept so history survives item deletion
+        slot          TEXT NOT NULL DEFAULT 'Part',     -- Nozzle, Bed surface, Bit, Collet, ...
+        fitted_at     TEXT NOT NULL DEFAULT (datetime('now')),
+        hours_at_fit  REAL NOT NULL DEFAULT 0,
+        removed_at    TEXT,
+        hours_at_removal REAL,
+        removal_reason TEXT NOT NULL DEFAULT '',        -- replaced | removed | worn | broken
+        note          TEXT NOT NULL DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS idx_parts_equipment ON equipment_parts(equipment_id);
+      CREATE TABLE IF NOT EXISTS maintenance_tasks (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        equipment_id    INTEGER NOT NULL REFERENCES equipment(id) ON DELETE CASCADE,
+        name            TEXT NOT NULL,
+        interval_hours  REAL,
+        interval_days   INTEGER,
+        last_done_at    TEXT,
+        last_done_hours REAL,
+        notes           TEXT NOT NULL DEFAULT '',
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS maintenance_log (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        equipment_id  INTEGER NOT NULL REFERENCES equipment(id) ON DELETE CASCADE,
+        task_id       INTEGER REFERENCES maintenance_tasks(id) ON DELETE SET NULL,
+        kind          TEXT NOT NULL DEFAULT 'note',     -- note | maintenance | fit | remove | hours | status
+        note          TEXT NOT NULL DEFAULT '',
+        hours         REAL,
+        created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_mlog_equipment ON maintenance_log(equipment_id);
+
+      CREATE TABLE alerts_new (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id      INTEGER REFERENCES items(id) ON DELETE CASCADE,
+        equipment_id INTEGER REFERENCES equipment(id) ON DELETE CASCADE,
+        task_id      INTEGER REFERENCES maintenance_tasks(id) ON DELETE CASCADE,
+        kind         TEXT NOT NULL,                     -- low | out | maintenance
+        message      TEXT NOT NULL,
+        quantity     REAL,
+        acknowledged INTEGER NOT NULL DEFAULT 0,
+        created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO alerts_new(id, item_id, kind, message, quantity, acknowledged, created_at)
+        SELECT id, item_id, kind, message, quantity, acknowledged, created_at FROM alerts;
+      DROP TABLE alerts;
+      ALTER TABLE alerts_new RENAME TO alerts;
+      CREATE INDEX IF NOT EXISTS idx_alerts_open ON alerts(acknowledged);
+    `);
+  },
 ];
 
 {

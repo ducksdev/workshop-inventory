@@ -54,9 +54,13 @@ When a newer version exists the dashboard tells you. **Settings → Updates** sh
 
 Create a cabinet, then add drawers with a grid (rows × columns) matching your gridfinity baseplate. Every item can sit in a cell like **R3 C9**, and the Locations page draws the drawer so you can see what's where and which cells are free. Click an empty cell to put something in it.
 
+## Equipment
+
+Add your printers, CNC, laser and tools under **Equipment**. For each one you can record what's **fitted** (nozzle, bed surface, bit, collet…) straight from stock — fitting takes one from stock, swapping keeps a history, and each slot shows how many compatible spares you have. Keep the **run-hours** counter up to date and set **maintenance tasks** with an interval in hours and/or days; when one comes due you're alerted exactly like low stock.
+
 ## Alerts
 
-Set an alert level on each item ("Alert when ≤"). When stock drops to it, an alert appears on the dashboard. Under **Settings → Notifications** you can also have alerts sent to email (SMTP), Discord, Slack, ntfy (phone push) or any custom webhook — each channel has a **Test** button.
+Set an alert level on each item ("Alert when ≤"). When stock drops to it — or a maintenance task comes due — an alert appears on the dashboard. Under **Settings → Notifications** you can also have alerts sent to email (SMTP), Discord, Slack, ntfy (phone push) or any custom webhook — each channel has a **Test** button.
 
 ## Licence
 
@@ -78,4 +82,5 @@ Everything is a plain JSON API under `/api/…`, so you can wire up a barcode sc
 POST /api/items/12/adjust   {"delta": -3, "reason": "consume", "ref": "Spool holder"}
 GET  /api/items?q=m3%2012
 POST /api/orders            {"item_id": 12, "quantity": 100}
+POST /api/equipment/3/hours {"delta": 2.5}        # e.g. from a Klipper/OctoPrint print-finished hook
 ```

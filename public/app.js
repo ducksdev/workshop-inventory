@@ -257,6 +257,7 @@
               ${it.tags ? `<dt>Tags</dt><dd>${esc(it.tags)}</dd>` : ''}
               ${it.notes ? `<dt>Notes</dt><dd>${esc(it.notes)}</dd>` : ''}
               ${it.projects.length ? `<dt>Used in</dt><dd>${it.projects.map((p) => `<a href="#/projects/${p.id}">${esc(p.name)}</a> (×${fmtQty(p.quantity)})`).join(', ')}</dd>` : ''}
+              ${(it.fitted_in || []).length ? `<dt>Fitted in</dt><dd>${it.fitted_in.map((f) => `<a href="#/equipment?id=${f.id}">${esc(f.name)}</a> (${esc(f.slot)})`).join(', ')}</dd>` : ''}
             </dl>
           </div>
           <div class="card">
@@ -367,8 +368,10 @@
         <a class="tile ${d.counts.low ? 'warn' : ''}" href="#/items?status=low"><div class="n">${d.counts.low}</div><div class="l">Running low</div></a>
         <a class="tile ${d.counts.out ? 'bad' : ''}" href="#/items?status=out"><div class="n">${d.counts.out}</div><div class="l">Out of stock</div></a>
         <a class="tile info" href="#/orders"><div class="n">${d.counts.on_order}</div><div class="l">On order</div></a>
+        <a class="tile ${d.counts.maintenance_due ? 'bad' : ''}" href="#/equipment"><div class="n">${d.counts.maintenance_due}</div><div class="l">Maintenance due</div></a>
         <a class="tile ${d.counts.open_alerts ? 'warn' : 'ok'}" href="#/alerts"><div class="n">${d.counts.open_alerts}</div><div class="l">Open alerts</div></a>
       </div>
+      ${d.maintenance.length ? `<div class="card" style="margin-bottom:14px"><h2>Maintenance due <a class="btn sm ghost" href="#/equipment">Equipment →</a></h2><div class="list">${d.maintenance.map((m) => `<a class="list-item clickable" href="#/equipment?id=${m.equipment_id}" style="color:inherit"><span>🔧</span><div class="grow"><div class="title">${esc(m.message)}</div><div class="sub">${ago(m.created_at)}</div></div></a>`).join('')}</div></div>` : ''}
       <div class="grid-2">
         <div class="card"><h2>Needs attention <a class="btn sm ghost" href="#/orders">Shopping list →</a></h2>
           ${d.attention.length ? `<div class="list">${d.attention.map((it) => `<div class="list-item clickable" data-item="${it.id}"><span>${it.category_icon}</span><div class="grow"><div class="title">${esc(it.name)}</div><div class="sub">${fmtQty(it.quantity)} ${esc(it.unit)} left · min ${fmtQty(it.min_quantity)}${it.on_order ? ` · ${fmtQty(it.on_order)} on order` : ''}${it.location ? ` · ${esc(it.location)}` : ''}</div></div>${statusPill(it.status)}${it.on_order ? '' : `<button class="btn sm" data-order="${it.id}">Order</button>`}</div>`).join('')}</div>` : '<div class="empty"><strong>All stocked up</strong>Nothing is at or below its alert level.</div>'}
@@ -572,6 +575,150 @@
     });
   };
 
+  const eqKind = (k) => state.meta.equipment_kinds.find((x) => x.key === k) || state.meta.equipment_kinds[state.meta.equipment_kinds.length - 1];
+  const eqStatus = (s) => ({ active: '<span class="status ok">ACTIVE</span>', attention: '<span class="status low">ATTENTION</span>', down: '<span class="status out">DOWN</span>', retired: '<span class="pill">retired</span>' }[s] || '');
+  const fmtH = (h) => (Math.round((h || 0) * 10) / 10).toLocaleString() + ' h';
+
+  views.equipment = async (view) => {
+    const list = await api('GET', '/equipment');
+    const selId = Number(state.params.id) || (list[0] && list[0].id);
+    const sel = selId ? await api('GET', `/equipment/${selId}`).catch(() => null) : null;
+
+    let detail = `<div class="card empty"><strong>No equipment yet</strong>Add your printers, CNC, laser and tools. You can then track what's fitted to each one and when maintenance is due.<div style="margin-top:12px"><button class="btn primary" id="eq-add-2">+ Add equipment</button></div></div>`;
+    if (sel) {
+      const partsHtml = sel.parts.length ? `<div class="list">${sel.parts.map((p) => `<div class="list-item"><span>${p.item ? p.item.category_icon : '🔩'}</span><div class="grow"><div class="title"><span class="pill">${esc(p.slot)}</span> ${esc(p.item_name)}</div><div class="sub">fitted ${fmtDate(p.fitted_at)} · ${fmtH(p.hours_in_use)} / ${p.days_in_use} d in use${p.note ? ' · ' + esc(p.note) : ''}<br>${p.spares_count ? `<a href="#" data-spares="${p.id}">${fmtQty(p.spares_count)} compatible spare${p.spares_count === 1 ? '' : 's'} in stock</a>` : '<span style="color:var(--warn)">no compatible spares in stock</span>'}${p.item ? ` · <a href="#" data-item="${p.item.id}">view item</a>` : ''}</div></div><button class="btn sm" data-swap="${p.id}" data-slot="${esc(p.slot)}">Swap</button><button class="btn sm ghost" data-remove="${p.id}" title="Remove without fitting a replacement">✕</button></div>`).join('')}</div>` : '<p class="dim">Nothing recorded as fitted yet.</p>';
+      const tasksHtml = sel.tasks.length ? `<div class="list">${sel.tasks.map((t) => {
+        const col = t.status === 'due' ? 'var(--bad)' : t.status === 'soon' ? 'var(--warn)' : 'var(--ok)';
+        const when = [t.interval_hours ? `every ${fmtH(t.interval_hours)}` : '', t.interval_days ? `every ${t.interval_days} d` : ''].filter(Boolean).join(' / ');
+        const left = [t.hours_left !== null ? (t.hours_left <= 0 ? `${fmtH(-t.hours_left)} overdue` : `${fmtH(t.hours_left)} left`) : '', t.days_left !== null ? (t.days_left <= 0 ? `${-t.days_left} d overdue` : `${t.days_left} d left`) : ''].filter(Boolean).join(' · ');
+        return `<div class="list-item"><span>${t.status === 'due' ? '🔴' : t.status === 'soon' ? '🟡' : '🟢'}</span><div class="grow"><div class="title">${esc(t.name)} <span class="dim" style="font-weight:400">${when}</span></div><div class="sub">${left}${t.last_done_at ? ` · last done ${fmtDate(t.last_done_at)}` : ' · never done'}${t.notes ? ' · ' + esc(t.notes) : ''}</div><div class="bar"><span style="width:${Math.round(t.progress * 100)}%; background:${col}"></span></div></div><button class="btn sm ${t.status === 'due' ? 'primary' : ''}" data-done="${t.id}">Mark done</button><button class="btn sm ghost" data-task-edit="${t.id}">Edit</button></div>`;
+      }).join('')}</div>` : '<p class="dim">No maintenance tasks. Add things like “Lubricate Z screw every 200 h” or “Clean bed every 7 days”.</p>';
+      const logIcon = { fit: '🔩', remove: '↩️', maintenance: '🔧', hours: '⏱️', status: '🚦', note: '📝' };
+      const logHtml = sel.log.length ? `<div class="table-wrap"><table><thead><tr><th>When</th><th></th><th>Entry</th><th class="right">Hours</th></tr></thead><tbody>${sel.log.map((l) => `<tr><td class="dim" style="white-space:nowrap">${fmtDate(l.created_at)}</td><td>${logIcon[l.kind] || '•'}</td><td>${esc(l.note)}</td><td class="num dim">${l.hours != null ? fmtQty(l.hours) : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="dim">No log entries yet.</p>';
+      detail = `
+        <div class="card">
+          <div class="row between" style="align-items:flex-start">
+            <div><h2 style="margin:0">${sel.kind_icon} ${esc(sel.name)}</h2><div class="dim">${esc([sel.make, sel.model].filter(Boolean).join(' '))}${sel.serial ? ` · S/N ${esc(sel.serial)}` : ''}${sel.location ? ` · ${esc(sel.location)}` : ''}${sel.purchase_date ? ` · bought ${sel.purchase_date}` : ''}${sel.purchase_cost != null ? ` · ${esc(state.meta.settings.currency)}${sel.purchase_cost}` : ''}${sel.url ? ` · <a href="${esc(sel.url)}" target="_blank" rel="noopener">manual ↗</a>` : ''}</div></div>
+            <div class="row">${eqStatus(sel.status)}<button class="btn sm" id="eq-edit">Edit</button><button class="btn sm danger" id="eq-del">Delete</button></div>
+          </div>
+          ${sel.notes ? `<p class="help" style="margin-top:8px">${esc(sel.notes)}</p>` : ''}
+          <div class="row" style="margin-top:14px; gap:14px; align-items:center">
+            <div><div class="dim" style="font-size:11px; text-transform:uppercase; letter-spacing:.06em">Run hours</div><div style="font-size:26px; font-weight:700; font-variant-numeric:tabular-nums">${fmtH(sel.hours)}</div></div>
+            <form id="hours-form" class="row"><input type="text" inputmode="decimal" name="delta" placeholder="+ hours" style="width:90px"><button class="btn sm">Add</button><button class="btn sm ghost" type="button" id="hours-set">Set total…</button></form>
+            <span class="help">Bump this after print or machining sessions; maintenance intervals count against it.</span>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card"><h2>Fitted parts <button class="btn sm primary" id="eq-fit">+ Fit a part</button></h2>${partsHtml}
+            ${sel.history.length ? `<details style="margin-top:10px"><summary class="help" style="cursor:pointer">Previously fitted (${sel.history.length})</summary><div class="list" style="margin-top:8px">${sel.history.map((h) => `<div class="list-item dim"><span>↩️</span><div class="grow"><div class="title" style="font-weight:500"><span class="pill">${esc(h.slot)}</span> ${esc(h.item_name)}</div><div class="sub">${esc(h.removal_reason)} after ${fmtH((h.hours_at_removal || 0) - h.hours_at_fit)} · ${fmtDate(h.fitted_at)} → ${fmtDate(h.removed_at)}</div></div></div>`).join('')}</div></details>` : ''}
+          </div>
+          <div class="card"><h2>Maintenance <button class="btn sm primary" id="eq-task">+ Task</button></h2>${tasksHtml}</div>
+        </div>
+        <div class="card"><h2>Log <form id="log-form" class="row" style="flex:1; max-width:520px; margin-left:12px"><input type="text" name="note" placeholder="Add a note… (e.g. replaced belts, tightened eccentric nuts)" class="grow"><button class="btn sm">Add</button></form></h2>${logHtml}</div>`;
+    }
+
+    view.innerHTML = `<div class="page-head"><div><h1>Equipment</h1><p>Your machines and tools, what's fitted to them, and when they need maintenance.</p></div><button class="btn primary" id="eq-add">+ Add equipment</button></div>
+      <div class="split"><div class="card"><div class="loc-tree">${list.map((e) => `<a href="#/equipment?id=${e.id}" class="${e.id === selId ? 'active' : ''}" title="${esc(e.kind_label)}">${e.kind_icon} ${esc(e.name)}<span class="cnt">${e.due_count ? `<span style="color:var(--bad)">🔴 ${e.due_count}</span>` : e.soon_count ? '🟡' : e.status === 'down' ? '⛔' : ''}</span></a>`).join('') || '<span class="dim">None yet</span>'}</div></div><div class="stack">${detail}</div></div>`;
+
+    const onAdd = () => equipmentDialog(null).then((r) => { if (r) location.hash = `#/equipment?id=${r.id}`; });
+    $('#eq-add', view).addEventListener('click', onAdd);
+    $('#eq-add-2', view)?.addEventListener('click', onAdd);
+    if (!sel) return;
+    $('#eq-edit', view).addEventListener('click', () => equipmentDialog(sel).then((r) => r && render()));
+    $('#eq-del', view).addEventListener('click', async () => { if (!confirm(`Delete "${sel.name}" and its history? Stock items are not affected.`)) return; try { await api('DELETE', `/equipment/${sel.id}`); location.hash = '#/equipment'; } catch (e) { handleErr(e); } });
+    $('#hours-form', view).addEventListener('submit', async (e) => { e.preventDefault(); const d = Number(e.target.delta.value); if (!(d > 0)) return toast('Enter hours to add', 'warn'); try { const r = await api('POST', `/equipment/${sel.id}/hours`, { delta: d }); if (r.due_count > sel.due_count) toast('Maintenance is now due', 'warn'); render(); refreshBadge(); } catch (err) { handleErr(err); } });
+    $('#hours-set', view).addEventListener('click', async () => { const v = prompt('Set total run hours to:', String(sel.hours)); if (v === null) return; try { await api('POST', `/equipment/${sel.id}/hours`, { total: Number(v) }); render(); refreshBadge(); } catch (err) { handleErr(err); } });
+    $('#log-form', view).addEventListener('submit', async (e) => { e.preventDefault(); const note = e.target.note.value.trim(); if (!note) return; try { await api('POST', `/equipment/${sel.id}/log`, { note }); render(); } catch (err) { handleErr(err); } });
+    $('#eq-fit', view).addEventListener('click', () => fitDialog(sel, '').then((r) => r && render()));
+    $$('[data-swap]', view).forEach((b) => b.addEventListener('click', () => fitDialog(sel, b.dataset.slot).then((r) => r && render())));
+    $$('[data-remove]', view).forEach((b) => b.addEventListener('click', () => removePartDialog(sel, sel.parts.find((p) => p.id == b.dataset.remove)).then((r) => r && render())));
+    $$('[data-item]', view).forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); showItem(Number(a.dataset.item)); }));
+    $$('[data-spares]', view).forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); const p = sel.parts.find((x) => x.id == a.dataset.spares); modal(`Spares for ${p.slot}`, `<div class="list">${p.spares.map((s) => `<div class="list-item clickable" data-item="${s.id}"><span>${s.category_icon}</span><div class="grow"><div class="title">${esc(s.name)}</div><div class="sub">${esc(s.location) || 'no location'}</div></div><span class="mono">${fmtQty(s.quantity)} ${esc(s.unit)}</span></div>`).join('')}</div>`, { onOpen: (w, close) => $$('[data-item]', w).forEach((el) => el.addEventListener('click', () => { close(); showItem(Number(el.dataset.item)); })) }); }));
+    $('#eq-task', view).addEventListener('click', () => taskDialog(sel, null).then((r) => r && render()));
+    $$('[data-task-edit]', view).forEach((b) => b.addEventListener('click', () => taskDialog(sel, sel.tasks.find((t) => t.id == b.dataset.taskEdit)).then((r) => r && render())));
+    $$('[data-done]', view).forEach((b) => b.addEventListener('click', async () => { const t = sel.tasks.find((x) => x.id == b.dataset.done); const note = prompt(`Mark "${t.name}" as done. Any notes?`, ''); if (note === null) return; try { await api('POST', `/equipment/${sel.id}/tasks/${t.id}/done`, { note }); toast(`${t.name} done`, 'ok'); render(); refreshBadge(); } catch (err) { handleErr(err); } }));
+  };
+
+  async function equipmentDialog(eq) {
+    const locs = await api('GET', '/locations');
+    const kinds = state.meta.equipment_kinds;
+    return new Promise((resolve) => {
+      modal(eq ? 'Edit equipment' : 'Add equipment', `<form id="eq-form" class="stack"><div class="form">
+        <label class="span-2">Name<input type="text" name="name" value="${esc(eq?.name || '')}" placeholder="Ender 3 V2, Shapeoko, Big drill" required></label>
+        <label>Type<select name="kind">${kinds.map((k) => `<option value="${k.key}" ${(eq?.kind || 'printer') === k.key ? 'selected' : ''}>${k.icon} ${esc(k.label)}</option>`).join('')}</select></label>
+        <label>Make<input type="text" name="make" value="${esc(eq?.make || '')}" placeholder="Creality"></label>
+        <label>Model<input type="text" name="model" value="${esc(eq?.model || '')}"></label>
+        <label>Serial no.<input type="text" name="serial" value="${esc(eq?.serial || '')}"></label>
+        <label>Status<select name="status">${['active', 'attention', 'down', 'retired'].map((s) => `<option ${(eq?.status || 'active') === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+        ${eq ? '' : '<label>Run hours so far<input type="text" inputmode="decimal" name="hours" value="0"></label>'}
+        <label>Location<select name="location_id">${locationOptions(locs, eq?.location_id)}</select></label>
+        <label>Purchased<input type="date" name="purchase_date" value="${esc(eq?.purchase_date || '')}"></label>
+        <label>Cost<input type="text" inputmode="decimal" name="purchase_cost" value="${eq?.purchase_cost ?? ''}"></label>
+        <label class="span-2">Manual / product link<input type="url" name="url" value="${esc(eq?.url || '')}" placeholder="https://"></label>
+        <label class="span-all">Notes<textarea name="notes">${esc(eq?.notes || '')}</textarea></label></div>
+        <div class="form-actions"><button type="submit" class="btn primary">${eq ? 'Save' : 'Add'}</button></div></form>`, { onOpen: (wrap, close) => {
+        $('#eq-form', wrap).addEventListener('submit', async (e) => {
+          e.preventDefault(); const body = Object.fromEntries(new FormData(e.target).entries());
+          try { const r = eq ? await api('PUT', `/equipment/${eq.id}`, body) : await api('POST', '/equipment', body); toast('Saved', 'ok'); close(); resolve(r); } catch (err) { handleErr(err); }
+        });
+      } });
+    });
+  }
+
+  function fitDialog(eq, slot) {
+    const slots = [...new Set([...eq.suggested_slots, ...eq.parts.map((p) => p.slot)])];
+    const current = slot ? eq.parts.find((p) => p.slot === slot) : null;
+    return new Promise((resolve) => {
+      let picked = null;
+      modal(slot ? `Swap ${slot} on ${eq.name}` : `Fit a part to ${eq.name}`, `<form id="fit-form" class="stack">
+        ${current ? `<div class="alert-box info">Currently fitted: <b>${esc(current.item_name)}</b> (${fmtH(current.hours_in_use)} in use). It will be moved to the history as “replaced”.</div>` : ''}
+        <div class="form"><label>Slot<input type="text" name="slot" list="dl-slots" value="${esc(slot || '')}" placeholder="Nozzle, Bit, Bed surface…" required><datalist id="dl-slots">${slots.map((s) => `<option value="${esc(s)}">`).join('')}</datalist></label>
+        <label class="span-2">Part from stock<div id="fit-pick"></div></label>
+        <label class="check span-all"><input type="checkbox" name="deduct" checked> Take 1 from stock</label>
+        <label class="span-all">Note<input type="text" name="note" placeholder="optional"></label></div>
+        <p class="help">Tip: for filament “loaded”, untick “take from stock” and track grams on the spool itself.</p>
+        <div class="form-actions"><button type="submit" class="btn primary">Fit it</button></div></form>`, { onOpen: (wrap, close) => {
+        const form = $('#fit-form', wrap);
+        itemPicker($('#fit-pick', wrap), (it) => { picked = it; if (it.category === 'filament') form.deduct.checked = false; }, 'Search stock… e.g. 0.4 nozzle');
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault(); if (!picked) return toast('Pick a part from stock', 'warn');
+          try { const r = await api('POST', `/equipment/${eq.id}/parts`, { item_id: picked.id, slot: form.slot.value.trim() || 'Part', deduct_stock: form.deduct.checked, note: form.note.value }); if (r.alert) toast(r.alert.message, r.alert.kind === 'out' ? 'err' : 'warn', 6000); toast('Fitted', 'ok'); close(); resolve(true); } catch (err) { handleErr(err); }
+        });
+      } });
+    });
+  }
+
+  function removePartDialog(eq, part) {
+    return new Promise((resolve) => {
+      modal(`Remove ${part.slot}: ${part.item_name}`, `<form id="rm-form" class="stack"><div class="form">
+        <label>Reason<select name="reason"><option value="worn">Worn out</option><option value="broken">Broken</option><option value="removed">Removed / not needed</option><option value="other">Other</option></select></label>
+        <label class="check span-all"><input type="checkbox" name="ret"> Put it back into stock (+1)</label></div>
+        <div class="form-actions"><button type="submit" class="btn primary">Remove</button></div></form>`, { onOpen: (wrap, close) => {
+        $('#rm-form', wrap).addEventListener('submit', async (e) => { e.preventDefault(); const f = e.target; try { await api('DELETE', `/equipment/${eq.id}/parts/${part.id}?reason=${encodeURIComponent(f.reason.value)}&return=${f.ret.checked ? 1 : 0}`); close(); resolve(true); } catch (err) { handleErr(err); } });
+      } });
+    });
+  }
+
+  function taskDialog(eq, task) {
+    return new Promise((resolve) => {
+      modal(task ? 'Edit maintenance task' : `Maintenance task for ${eq.name}`, `<form id="task-form" class="stack"><div class="form">
+        <label class="span-all">What<input type="text" name="name" value="${esc(task?.name || '')}" placeholder="Lubricate Z lead screw" list="dl-tasks" required><datalist id="dl-tasks"><option value="Lubricate Z lead screw"><option value="Lubricate linear rails"><option value="Clean bed surface"><option value="Check belt tension"><option value="Replace PTFE tube"><option value="Clean extruder gears"><option value="Check wheels / eccentric nuts"><option value="Clean / replace air filter"><option value="Check spindle collet"><option value="Clean lens"><option value="Empty dust extractor"></datalist></label>
+        <label>Every … hours<input type="text" inputmode="decimal" name="interval_hours" value="${task?.interval_hours ?? ''}" placeholder="200"></label>
+        <label>Every … days<input type="number" name="interval_days" value="${task?.interval_days ?? ''}" placeholder="30"></label>
+        <label class="span-all">Notes<input type="text" name="notes" value="${esc(task?.notes || '')}" placeholder="what grease, torque, where the manual says…"></label>
+        ${task ? '' : '<label class="check span-all"><input type="checkbox" name="fresh" checked> Count from now (untick if already overdue)</label>'}</div>
+        <p class="help">Give hours, days or both — whichever comes first makes it due. Due tasks alert like low stock.</p>
+        <div class="form-actions">${task ? '<button type="button" class="btn danger" id="task-del">Delete</button><span class="grow"></span>' : ''}<button type="submit" class="btn primary">${task ? 'Save' : 'Add task'}</button></div></form>`, { onOpen: (wrap, close) => {
+        $('#task-del', wrap)?.addEventListener('click', async () => { if (!confirm('Delete this task?')) return; await api('DELETE', `/equipment/${eq.id}/tasks/${task.id}`); close(); resolve(true); });
+        $('#task-form', wrap).addEventListener('submit', async (e) => {
+          e.preventDefault(); const f = e.target; const body = { name: f.name.value, interval_hours: f.interval_hours.value, interval_days: f.interval_days.value, notes: f.notes.value };
+          if (!task) body.start_fresh = f.fresh.checked;
+          try { task ? await api('PUT', `/equipment/${eq.id}/tasks/${task.id}`, body) : await api('POST', `/equipment/${eq.id}/tasks`, body); close(); resolve(true); } catch (err) { handleErr(err); }
+        });
+      } });
+    });
+  }
+
   views.orders = async (view) => {
     const showAll = state.params.history === '1';
     const [open, suggest, history] = await Promise.all([api('GET', '/orders?status=ordered'), api('GET', '/orders/suggest'), showAll ? api('GET', '/orders?status=all') : Promise.resolve([])]);
@@ -598,11 +745,12 @@
     const channels = state.meta.license.licensed ? await api('GET', '/channels').catch(() => []) : [];
     view.innerHTML = `<div class="page-head"><div><h1>Alerts</h1><p>Fired when an item drops to its alert level or runs out.${channels.length ? ` Also sent to ${channels.filter((c) => c.enabled).length} notification channel${channels.filter((c) => c.enabled).length === 1 ? '' : 's'}.` : ` <a href="#/settings/notifications">Set up email, Discord or webhooks →</a>`}</p></div>
       <div class="row"><a class="btn" href="#/alerts${all ? '' : '?all=1'}">${all ? 'Open only' : 'Show history'}</a>${channels.length ? '<button class="btn" id="digest">Send digest now</button>' : ''}${alerts.some((a) => !a.acknowledged) ? '<button class="btn primary" id="ack-all">Acknowledge all</button>' : ''}</div></div>
-      ${alerts.length ? `<div class="list">${alerts.map((a) => `<div class="list-item clickable ${a.acknowledged ? 'dim' : ''}" data-item="${a.item_id}"><span>${a.kind === 'out' ? '🚫' : '⚠️'}</span><div class="grow"><div class="title">${esc(a.message)}</div><div class="sub">${fmtDate(a.created_at)} · now ${fmtQty(a.current_quantity)} ${esc(a.unit)}</div></div>${a.acknowledged ? '<span class="pill">seen</span>' : `<button class="btn sm" data-ack="${a.id}">OK</button>`}</div>`).join('')}</div>` : '<div class="card empty"><strong>No alerts</strong>Nothing has dropped below its alert level.</div>'}`;
+      ${alerts.length ? `<div class="list">${alerts.map((a) => `<div class="list-item clickable ${a.acknowledged ? 'dim' : ''}" ${a.item_id ? `data-item="${a.item_id}"` : `data-equipment="${a.equipment_id}"`}><span>${a.kind === 'out' ? '🚫' : a.kind === 'maintenance' ? '🔧' : '⚠️'}</span><div class="grow"><div class="title">${esc(a.message)}</div><div class="sub">${fmtDate(a.created_at)}${a.item_id ? ` · now ${fmtQty(a.current_quantity)} ${esc(a.unit)}` : ''}</div></div>${a.acknowledged ? '<span class="pill">seen</span>' : `<button class="btn sm" data-ack="${a.id}">OK</button>`}</div>`).join('')}</div>` : '<div class="card empty"><strong>No alerts</strong>Nothing has dropped below its alert level or come due for maintenance.</div>'}`;
     $$('[data-ack]', view).forEach((b) => b.addEventListener('click', async (e) => { e.stopPropagation(); await api('POST', `/alerts/${b.dataset.ack}/ack`); render(); refreshBadge(); }));
     $('#ack-all', view)?.addEventListener('click', async () => { await api('POST', '/alerts/ack-all'); render(); refreshBadge(); });
     $('#digest', view)?.addEventListener('click', async () => { try { const r = await api('POST', '/alerts/digest'); toast(r.sent ? `Digest sent (${r.count} items)` : r.reason, r.sent ? 'ok' : 'info'); } catch (e) { handleErr(e); } });
     $$('[data-item]', view).forEach((el) => el.addEventListener('click', (e) => { if (e.target.closest('button')) return; showItem(Number(el.dataset.item)); }));
+    $$('[data-equipment]', view).forEach((el) => el.addEventListener('click', (e) => { if (e.target.closest('button')) return; location.hash = `#/equipment?id=${el.dataset.equipment}`; }));
   };
 
   views.settings = async (view) => {
@@ -621,7 +769,7 @@
         <div class="card"><h2>Status</h2>
           ${lic.licensed ? `<div class="alert-box ok"><b>Pro license active</b><br>Licensed to ${esc(lic.licensee)}${lic.email ? ` &lt;${esc(lic.email)}&gt;` : ''}<br>${lic.expires_at ? `Expires ${lic.expires_at.slice(0, 10)} (${lic.days_left} days)` : 'Perpetual — never expires'}<br><span class="mono dim">${esc(lic.license_id)}</span></div>`
             : `<div class="alert-box ${lic.licensee ? 'bad' : 'info'}"><b>Free version</b><br>${esc(lic.reason)}${lic.licensee ? `<br><span class="dim">Stored license for ${esc(lic.licensee)}</span>` : ''}</div>
-               <dl class="kv" style="margin-top:12px"><dt>Items</dt><dd>up to ${lim.maxItems}</dd><dt>Projects</dt><dd>up to ${lim.maxProjects}</dd><dt>Notifications</dt><dd>dashboard only</dd><dt>CSV import/export</dt><dd>—</dd></dl>`}
+               <dl class="kv" style="margin-top:12px"><dt>Items</dt><dd>up to ${lim.maxItems}</dd><dt>Projects</dt><dd>up to ${lim.maxProjects}</dd><dt>Equipment</dt><dd>up to ${lim.maxEquipment}</dd><dt>Notifications</dt><dd>dashboard only</dd><dt>CSV import/export</dt><dd>—</dd></dl>`}
           <dl class="kv" style="margin-top:14px"><dt>Install ID</dt><dd class="mono" id="install-id">${esc(lic.install_id)} <button class="btn sm ghost" id="copy-id">copy</button></dd></dl>
           <p class="help">Your vendor may ask for the Install ID to issue a license bound to this installation.</p>
           ${lic.licensee ? '<button class="btn danger sm" id="lic-remove" style="margin-top:8px">Remove license</button>' : ''}

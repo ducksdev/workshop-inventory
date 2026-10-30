@@ -23,7 +23,7 @@ export interface ChannelRow {
 }
 
 export interface Notification {
-  kind: 'low' | 'out' | 'test' | 'info';
+  kind: 'low' | 'out' | 'maintenance' | 'test' | 'info';
   title: string;
   message: string;
   item?: {
@@ -40,8 +40,8 @@ export const CHANNEL_TYPES = [
   { type: 'webhook', label: 'Custom webhook', fields: ['url', 'method', 'headers', 'body_template'] },
 ] as const;
 
-const colorFor = (kind: Notification['kind']) => (kind === 'out' ? 0xef4444 : kind === 'low' ? 0xf59e0b : 0x3b82f6);
-const emojiFor = (kind: Notification['kind']) => (kind === 'out' ? '🚫' : kind === 'low' ? '⚠️' : kind === 'test' ? '🔔' : 'ℹ️');
+const colorFor = (kind: Notification['kind']) => (kind === 'out' ? 0xef4444 : kind === 'low' ? 0xf59e0b : kind === 'maintenance' ? 0xa78bfa : 0x3b82f6);
+const emojiFor = (kind: Notification['kind']) => (kind === 'out' ? '🚫' : kind === 'low' ? '⚠️' : kind === 'maintenance' ? '🔧' : kind === 'test' ? '🔔' : 'ℹ️');
 
 function fill(template: string, n: Notification): string {
   const flat: Record<string, string> = {
@@ -95,7 +95,7 @@ export async function sendToChannel(ch: ChannelRow, n: Notification): Promise<vo
     }
     case 'ntfy': {
       const base = (cfg.url || 'https://ntfy.sh').replace(/\/$/, '');
-      const headers: Record<string, string> = { Title: n.title, Priority: n.kind === 'out' ? 'high' : 'default', Tags: n.kind === 'out' ? 'no_entry' : n.kind === 'low' ? 'warning' : 'bell' };
+      const headers: Record<string, string> = { Title: n.title, Priority: n.kind === 'out' ? 'high' : 'default', Tags: n.kind === 'out' ? 'no_entry' : n.kind === 'low' ? 'warning' : n.kind === 'maintenance' ? 'wrench' : 'bell' };
       if (cfg.token) headers.Authorization = `Bearer ${cfg.token}`;
       if (n.item?.supplier_url) { headers.Click = n.item.supplier_url; }
       const res = await fetch(`${base}/${cfg.topic}`, { method: 'POST', headers, body: `${n.message}${detail}` });

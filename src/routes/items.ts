@@ -65,7 +65,8 @@ items.get('/:id', (req, res) => {
   const movements = db.prepare('SELECT * FROM movements WHERE item_id = ? ORDER BY id DESC LIMIT 100').all(it.id);
   const orders = db.prepare('SELECT * FROM orders WHERE item_id = ? ORDER BY id DESC').all(it.id);
   const projects = db.prepare('SELECT p.id, p.name, pi.quantity FROM project_items pi JOIN projects p ON p.id = pi.project_id WHERE pi.item_id = ?').all(it.id);
-  res.json({ ...shapeItem(it), movements, orders, projects });
+  const fitted_in = db.prepare('SELECT e.id, e.name, ep.slot, ep.fitted_at FROM equipment_parts ep JOIN equipment e ON e.id = ep.equipment_id WHERE ep.item_id = ? AND ep.removed_at IS NULL').all(it.id);
+  res.json({ ...shapeItem(it), movements, orders, projects, fitted_in });
 });
 
 items.post('/', (req, res) => {

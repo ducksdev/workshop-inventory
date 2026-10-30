@@ -10,6 +10,8 @@ import { locations } from './routes/locations.js';
 import { projects } from './routes/projects.js';
 import { orders } from './routes/orders.js';
 import { system } from './routes/system.js';
+import { equipment } from './routes/equipment.js';
+import { startMaintenanceScheduler } from './equipment.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -34,6 +36,7 @@ app.use('/api/items', items);
 app.use('/api/locations', locations);
 app.use('/api/projects', projects);
 app.use('/api/orders', orders);
+app.use('/api/equipment', equipment);
 app.use('/api', system);
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'No such endpoint' }));
@@ -47,6 +50,7 @@ app.use((err: Error & { status?: number; type?: string }, _req: express.Request,
 app.use(express.static(PUBLIC_DIR, { index: 'index.html', maxAge: '1h' }));
 app.get('*', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
+startMaintenanceScheduler();
 app.listen(PORT, HOST, () => {
   const lic = licenseStatus();
   console.log(`Workshop Inventory listening on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);

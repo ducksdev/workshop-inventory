@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db, getSetting, setSetting } from '../db.js';
-import { categoriesForClient, categoryOrDefault } from '../categories.js';
+import { EQUIPMENT_KINDS, categoriesForClient, categoryOrDefault } from '../categories.js';
 import { importLicense, licenseStatus, limits, removeLicense } from '../license.js';
 import { CHANNEL_TYPES, broadcast, sendToChannel, type ChannelRow } from '../notify.js';
 import { checkPassword, isAuthed, login, logout, passwordIsSet, setPassword } from '../auth.js';
@@ -19,7 +19,7 @@ const settingsView = () => ({
 system.get('/meta', (req, res) => {
   res.json({
     app: 'Workshop Inventory', version: VERSION,
-    categories: categoriesForClient(), channel_types: CHANNEL_TYPES, license: licenseStatus(),
+    categories: categoriesForClient(), equipment_kinds: EQUIPMENT_KINDS, channel_types: CHANNEL_TYPES, license: licenseStatus(),
     auth: { password_set: passwordIsSet(), authed: isAuthed(req) },
     settings: settingsView(),
   });
@@ -54,7 +54,10 @@ system.get('/dashboard', (_req, res) => {
       open_alerts: (db.prepare('SELECT COUNT(*) c FROM alerts WHERE acknowledged = 0').get() as any).c,
       locations: locs.length,
       value: (db.prepare('SELECT COALESCE(SUM(quantity * unit_cost),0) v FROM items WHERE unit_cost IS NOT NULL').get() as any).v,
+      equipment: (db.prepare('SELECT COUNT(*) c FROM equipment').get() as any).c,
+      maintenance_due: (db.prepare("SELECT COUNT(*) c FROM alerts WHERE kind = 'maintenance' AND acknowledged = 0").get() as any).c,
     },
+    maintenance: db.prepare("SELECT a.id, a.equipment_id, a.task_id, a.message, a.created_at, e.name AS equipment_name, e.kind FROM alerts a JOIN equipment e ON e.id = a.equipment_id WHERE a.kind = 'maintenance' AND a.acknowledged = 0 ORDER BY a.id DESC LIMIT 10").all(),
     attention: shape(db.prepare('SELECT * FROM items WHERE quantity <= min_quantity ORDER BY quantity <= 0 DESC, quantity ASC, name LIMIT 25').all() as ItemRow[]),
     recent: db.prepare('SELECT m.*, i.name, i.unit FROM movements m JOIN items i ON i.id = m.item_id ORDER BY m.id DESC LIMIT 15').all(),
     by_category: db.prepare('SELECT category, COUNT(*) c FROM items GROUP BY category').all(),
@@ -65,7 +68,7 @@ system.get('/dashboard', (_req, res) => {
 
 system.get('/alerts', (req, res) => {
   const all = str(req.query.all) === '1';
-  res.json(db.prepare(`SELECT a.*, i.name, i.unit, i.quantity AS current_quantity FROM alerts a JOIN items i ON i.id = a.item_id ${all ? '' : 'WHERE a.acknowledged = 0'} ORDER BY a.id DESC LIMIT 200`).all());
+  res.json(db.prepare(`SELECT a.*, COALESCE(i.name, e.name) AS name, i.unit, i.quantity AS current_quantity, e.kind AS equipment_kind FROM alerts a LEFT JOIN items i ON i.id = a.item_id LEFT JOIN equipment e ON e.id = a.equipment_id ${all ? '' : 'WHERE a.acknowledged = 0'} ORDER BY a.id DESC LIMIT 200`).all());
 });
 system.post('/alerts/:id/ack', (req, res) => {
   db.prepare('UPDATE alerts SET acknowledged = 1 WHERE id = ?').run(Number(req.params.id));
@@ -134,10 +137,11 @@ system.post('/channels/:id/test', async (req, res) => {
 /** Send a digest of everything currently needing attention to all channels. */
 system.post('/alerts/digest', async (_req, res) => {
   const rows = db.prepare('SELECT * FROM items WHERE quantity <= min_quantity ORDER BY quantity <= 0 DESC, name').all() as ItemRow[];
-  if (!rows.length) return res.json({ sent: false, reason: 'Nothing is low or out of stock.' });
-  const lines = rows.map((r) => `${r.quantity <= 0 ? '🚫' : '⚠️'} ${r.name}: ${r.quantity} ${r.unit} (min ${r.min_quantity})`);
-  await broadcast({ kind: 'info', title: `Stock digest: ${rows.length} item${rows.length === 1 ? '' : 's'} need attention`, message: lines.join('\n') });
-  res.json({ sent: true, count: rows.length });
+  const maint = db.prepare("SELECT message FROM alerts WHERE kind = 'maintenance' AND acknowledged = 0 ORDER BY id").all() as { message: string }[];
+  if (!rows.length && !maint.length) return res.json({ sent: false, reason: 'Nothing is low, out of stock, or due for maintenance.' });
+  const lines = [...rows.map((r) => `${r.quantity <= 0 ? '🚫' : '⚠️'} ${r.name}: ${r.quantity} ${r.unit} (min ${r.min_quantity})`), ...maint.map((m) => `🔧 ${m.message}`)];
+  await broadcast({ kind: 'info', title: `Workshop digest: ${lines.length} thing${lines.length === 1 ? '' : 's'} need attention`, message: lines.join('\n') });
+  res.json({ sent: true, count: lines.length });
 });
 
 // ---- license ----------------------------------------------------------------
