@@ -65,10 +65,10 @@ The customer's Install ID is shown under Settings → License (and in the server
 ## Distribution: GitHub repo → releases → one-line install
 
 ```
- you: npm version minor && git push --follow-tags
+ you: npm version minor && git push
             │
             ▼
- GitHub Actions (release.yml) builds:
+ GitHub Actions (release.yml) sees a new version on main, tags it and builds:
    • workshop-inventory.tar.gz   ← install.sh downloads .../releases/latest/download/…
    • workshop-inventory-X.Y.Z.zip (Windows/Mac users)
    • ghcr.io/<you>/workshop-inventory:latest (Docker)
@@ -89,11 +89,11 @@ The customer's Install ID is shown under Settings → License (and in the server
 
 ```bash
 # make changes, commit…
-npm version patch        # or minor / major — bumps package.json and creates tag vX.Y.Z
-git push --follow-tags   # the tag triggers .github/workflows/release.yml
+npm version patch        # or minor / major — bumps package.json (+ a local tag you can ignore)
+git push                 # the version change on main triggers .github/workflows/release.yml
 ```
 
-A few minutes later the release exists and every installation offers the update (dashboard banner + `sudo workshop-inventory update`). If the update changes the database, add a function to `MIGRATIONS` in `src/db.ts`; it runs once on first start of the new version.
+The workflow creates tag `vX.Y.Z` on GitHub, builds, and publishes. (Pushing a `vX.Y.Z` tag yourself also works, as does "Run workflow" in the Actions tab.) A few minutes later the release exists and every installation offers the update (dashboard banner + `sudo workshop-inventory update`). If the update changes the database, add a function to `MIGRATIONS` in `src/db.ts`; it runs once on first start of the new version.
 
 ### Local release build (no GitHub)
 
