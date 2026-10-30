@@ -188,7 +188,7 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
 @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes pop { from { transform: translateY(6px) scale(.985); opacity: 0 } to { transform: none; opacity: 1 } }
 
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 14px; overflow-x: auto; }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
 .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 9px 13px; color: var(--text-2); cursor: pointer; font-weight: 550; white-space: nowrap; margin-bottom: -1px; }
 .tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
 
@@ -233,6 +233,10 @@ pre.code { background: var(--bg); border: 1px solid var(--line); border-radius: 
   .page-head { margin-bottom: 12px; }
   th, td { padding: 8px 9px; }
   .hide-m { display: none; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .chips::-webkit-scrollbar { display: none; }
 }
 
 /* ---- release notes ------------------------------------------------------- */

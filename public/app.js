@@ -52,7 +52,9 @@
     wrap.innerHTML = `<div class="modal ${size}" role="dialog" aria-modal="true"><div class="modal-head"><h2>${esc(title)}</h2><button class="close" aria-label="Close">×</button></div><div class="modal-body">${bodyHtml}</div></div>`;
     const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey); };
     const onKey = (e) => { if (e.key === 'Escape') close(); };
-    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    // Click outside closes read-only dialogs only; anything with a form (add item, order,
+    // receive, channel…) must be closed deliberately via ✕, Cancel or Escape.
+    wrap.addEventListener('click', (e) => { if (e.target === wrap && !$('form', wrap)) close(); });
     $('.close', wrap).addEventListener('click', close);
     document.addEventListener('keydown', onKey);
     root.appendChild(wrap);

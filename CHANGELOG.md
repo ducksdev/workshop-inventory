@@ -3,6 +3,11 @@
 Release notes shown to users in **Settings → Updates**. Add a section for each version before running `npm version …`.
 Keep it in plain language — users read this to decide whether to update.
 
+## 1.0.3
+
+- Dialogs with a form (add item, order, receive, notification channel…) no longer close when you click outside them, so you can't lose what you've typed by accident. Use ✕, Cancel or Escape.
+- Settings tabs wrap instead of showing a scrollbar.
+
 ## 1.0.2
 
 - Updater now fetches its installer from the release itself, so updates are never served a stale script. No visible changes.
