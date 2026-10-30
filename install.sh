@@ -152,7 +152,7 @@ case "\${1:-help}" in
   update)
     shift
     echo "Fetching installer from github.com/\$REPO…"
-    if curl -fsSL "https://raw.githubusercontent.com/\$REPO/main/install.sh" -o /tmp/wi-install.sh; then
+    if curl -fsSL "https://raw.githubusercontent.com/\$REPO/main/install.sh?t=\$(date +%s)" -o /tmp/wi-install.sh; then
       bash /tmp/wi-install.sh --repo "\$REPO" "\$@"; rm -f /tmp/wi-install.sh
     else
       echo "Could not download installer; using the local copy."; bash "\$APP_DIR/install.sh" --repo "\$REPO" "\$@"
@@ -199,8 +199,7 @@ USAGE
 esac
 EOF
 chmod +x /usr/local/bin/workshop-inventory
-# keep a copy of this installer for offline "update" fallback
-[ -f "$0" ] && cp "$0" "$APP_DIR/install.sh" 2>/dev/null || true
+# (the release tarball already ships its own install.sh in $APP_DIR for the offline "update" fallback)
 
 # ---- 9. systemd service ----------------------------------------------------------
 if [ "$HAVE_SYSTEMD" -eq 1 ]; then
