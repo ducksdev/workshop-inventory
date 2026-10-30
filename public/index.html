@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Workshop Inventory</title>
+<meta name="theme-color" content="#15171c">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%23f59e0b'/><rect x='18' y='18' width='28' height='28' rx='4' fill='%2315171c'/><rect x='54' y='18' width='28' height='28' rx='4' fill='%2315171c'/><rect x='18' y='54' width='28' height='28' rx='4' fill='%2315171c'/><rect x='54' y='54' width='28' height='28' rx='4' fill='%2315171c' opacity='.35'/></svg>">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#/"><span class="brand-mark"></span><span class="brand-text" id="site-name">Workshop</span></a>
+  <form class="global-search" id="global-search" autocomplete="off">
+    <input id="global-q" type="search" placeholder="Search parts… e.g. m3 12mm, 1fl, 0.4 nozzle" aria-label="Search inventory">
+  </form>
+  <nav class="nav" id="nav">
+    <a href="#/" data-route="">Dashboard</a>
+    <a href="#/items" data-route="items">Inventory</a>
+    <a href="#/locations" data-route="locations">Locations</a>
+    <a href="#/projects" data-route="projects">Projects</a>
+    <a href="#/orders" data-route="orders">Orders</a>
+    <a href="#/alerts" data-route="alerts">Alerts <span class="badge hidden" id="alert-badge">0</span></a>
+    <a href="#/settings" data-route="settings">Settings</a>
+  </nav>
+  <span class="tier" id="tier-badge" title="License status">Free</span>
+</header>
+
+<main id="view" class="view"></main>
+
+<div id="modal-root"></div>
+<div id="toasts" class="toasts"></div>
+
+<div id="login" class="login hidden">
+  <form id="login-form" class="login-card">
+    <h1>Workshop Inventory</h1>
+    <p>This installation is password protected.</p>
+    <input type="password" id="login-pw" placeholder="Password" autofocus>
+    <button class="btn primary" type="submit">Sign in</button>
+    <p class="err" id="login-err"></p>
+  </form>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

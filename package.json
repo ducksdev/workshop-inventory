@@ -1,0 +1,41 @@
+{
+  "name": "workshop-inventory",
+  "version": "1.0.0",
+  "description": "Self-hosted workshop inventory for makers: hardware, cutting tools, 3D-printer nozzles, filament and more. Gridfinity-aware locations, BOM builds, low-stock alerts, offline licensing.",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "keygen": "node dist/keygen.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "package": "npm run build && node scripts/package.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "nodemailer": "^6.9.16"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "@types/nodemailer": "^6.4.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OWNER/workshop-inventory.git"
+  },
+  "bin": {
+    "workshop-inventory-keygen": "dist/keygen.js"
+  }
+}

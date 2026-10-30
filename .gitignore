@@ -1,0 +1,8 @@
+node_modules/
+dist/
+data/
+release/
+licenses/
+keys/private.pem
+keys/issued.jsonl
+.env
