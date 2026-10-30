@@ -6,3 +6,7 @@ licenses/
 keys/private.pem
 keys/issued.jsonl
 .env
+
+# vendor-only notes, never published
+VENDOR-GUIDE.md
+VENDOR-*.md

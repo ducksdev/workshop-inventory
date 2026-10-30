@@ -28,7 +28,7 @@ fs.copyFileSync(path.join(root, 'keys', 'public.pem'), path.join(out, 'keys', 'p
 fs.copyFileSync(path.join(root, 'package-lock.json'), path.join(out, 'package-lock.json'));
 fs.copyFileSync(path.join(root, 'Dockerfile'), path.join(out, 'Dockerfile'));
 fs.copyFileSync(path.join(root, 'docker-compose.yml'), path.join(out, 'docker-compose.yml'));
-fs.copyFileSync(path.join(root, 'CUSTOMER-README.md'), path.join(out, 'README.md'));
+fs.copyFileSync(path.join(root, 'README.md'), path.join(out, 'README.md'));
 fs.copyFileSync(path.join(root, 'install.sh'), path.join(out, 'install.sh'));
 for (const f of ['start.sh', 'start.bat']) fs.copyFileSync(path.join(root, 'scripts', f), path.join(out, f));
 fs.chmodSync(path.join(out, 'start.sh'), 0o755);
