@@ -151,8 +151,13 @@ REPO="$REPO"; APP_DIR="$APP_DIR"; DATA_DIR="$DATA_DIR"; SERVICE="$SERVICE"; RUN_
 case "\${1:-help}" in
   update)
     shift
-    echo "Fetching installer from github.com/\$REPO…"
-    if curl -fsSL "https://raw.githubusercontent.com/\$REPO/main/install.sh?t=\$(date +%s)" -o /tmp/wi-install.sh; then
+    # Use the installer that ships with the release being installed (release assets are never
+    # served stale, unlike raw.githubusercontent.com which caches for 5 minutes).
+    REL="latest/download"; prev=""
+    for a in "\$@"; do [ "\$prev" = "--version" ] && REL="download/\$a"; prev="\$a"; done
+    echo "Fetching installer from github.com/\$REPO (\$REL)…"
+    if curl -fsSL "https://github.com/\$REPO/releases/\$REL/install.sh" -o /tmp/wi-install.sh \
+       || curl -fsSL "https://raw.githubusercontent.com/\$REPO/main/install.sh" -o /tmp/wi-install.sh; then
       bash /tmp/wi-install.sh --repo "\$REPO" "\$@"; rm -f /tmp/wi-install.sh
     else
       echo "Could not download installer; using the local copy."; bash "\$APP_DIR/install.sh" --repo "\$REPO" "\$@"

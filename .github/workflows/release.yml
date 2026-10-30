@@ -71,6 +71,7 @@ jobs:
           body_path: ${{ steps.notes.outputs.found == 'true' && 'notes.md' || '' }}
           generate_release_notes: ${{ steps.notes.outputs.found != 'true' }}
           files: |
+            install.sh
             release/workshop-inventory.tar.gz
             release/workshop-inventory-*.tar.gz
             release/workshop-inventory-*.zip

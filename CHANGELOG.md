@@ -3,6 +3,10 @@
 Release notes shown to users in **Settings → Updates**. Add a section for each version before running `npm version …`.
 Keep it in plain language — users read this to decide whether to update.
 
+## 1.0.2
+
+- Updater now fetches its installer from the release itself, so updates are never served a stale script. No visible changes.
+
 ## 1.0.1
 
 - **Update from inside the app.** Settings → Updates shows what's new and, on server installs, an *Update now* button that installs the new version and restarts for you. Docker and desktop installs get the right instructions instead.
