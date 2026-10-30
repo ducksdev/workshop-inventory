@@ -16,7 +16,10 @@ jobs:
       - name: Smoke test
         run: |
           mkdir -p keys && [ -f keys/public.pem ] || node dist/keygen.js init
-          PORT=3999 node dist/index.js & sleep 2
-          curl -fsS localhost:3999/api/meta | head -c 200
+          PORT=3999 node dist/index.js > server.log 2>&1 &
+          PID=$!; sleep 2
+          curl -fsS localhost:3999/api/meta | head -c 200; echo
           curl -fsS -X POST localhost:3999/api/items -H 'content-type: application/json' \
             -d '{"category":"hardware","attributes":{"thread":"M3","length":"12","kind":"Socket Head Cap Screw"},"quantity":5,"min_quantity":2}' | grep -q '"M3 x 12mm Socket Head Cap Screw"'
+          kill $PID
+          echo "smoke test passed"
