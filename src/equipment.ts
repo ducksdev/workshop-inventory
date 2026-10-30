@@ -3,7 +3,7 @@
  * to them, run-hours, and maintenance tasks with hour/day intervals.
  */
 import { db } from './db.js';
-import { CATEGORY_MAP, EQUIPMENT_KINDS } from './categories.js';
+import { EQUIPMENT_KINDS, getCategory } from './categories.js';
 import { adjustStock, allLocations, getItem, locationPath, shapeItem, type ItemRow } from './stock.js';
 import { broadcast } from './notify.js';
 
@@ -32,7 +32,7 @@ export function getEquipment(id: number): EquipmentRow | undefined {
 export function compatibleSpares(part: PartRow): ReturnType<typeof shapeItem>[] {
   const item = part.item_id ? getItem(part.item_id) : undefined;
   if (!item) return [];
-  const cat = CATEGORY_MAP[item.category];
+  const cat = getCategory(item.category);
   let attrs: Record<string, string> = {};
   try { attrs = JSON.parse(item.attributes); } catch { /* ignore */ }
   const keys = (cat?.compatKeys || []).filter((k) => attrs[k]);

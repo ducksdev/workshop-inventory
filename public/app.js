@@ -66,7 +66,8 @@
 
   // ---- shared widgets -------------------------------------------------------
   const cat = (key) => (state.meta.categories.find((c) => c.key === key) || state.meta.categories[state.meta.categories.length - 1]);
-  const catOptions = (sel) => state.meta.categories.map((c) => `<option value="${c.key}" ${c.key === sel ? 'selected' : ''}>${c.icon} ${esc(c.label)}</option>`).join('');
+  const visibleCats = () => state.meta.categories.filter((c) => !c.hidden);
+  const catOptions = (sel) => state.meta.categories.filter((c) => !c.hidden || c.key === sel).map((c) => `<option value="${c.key}" ${c.key === sel ? 'selected' : ''}>${c.icon} ${esc(c.label)}</option>`).join('');
 
   function attrFieldsHtml(category, attrs = {}) {
     const c = cat(category);
@@ -406,7 +407,7 @@
         <select id="status"><option value="">Any status</option><option value="attention" ${p.status === 'attention' ? 'selected' : ''}>Needs attention</option><option value="low" ${p.status === 'low' ? 'selected' : ''}>Running low</option><option value="out" ${p.status === 'out' ? 'selected' : ''}>Out of stock</option><option value="ok" ${p.status === 'ok' ? 'selected' : ''}>In stock</option></select>
         <select id="sort"><option value="name">Sort: name</option><option value="quantity" ${p.sort === 'quantity' ? 'selected' : ''}>Sort: quantity</option><option value="updated" ${p.sort === 'updated' ? 'selected' : ''}>Sort: recently changed</option><option value="created" ${p.sort === 'created' ? 'selected' : ''}>Sort: newest</option><option value="category" ${p.sort === 'category' ? 'selected' : ''}>Sort: category</option></select>
       </div>
-      <div class="chips" style="margin-bottom:12px"><button class="chip ${!p.category ? 'active' : ''}" data-cat="">All</button>${state.meta.categories.map((c) => `<button class="chip ${p.category === c.key ? 'active' : ''}" data-cat="${c.key}">${c.icon} ${esc(c.label)}</button>`).join('')}</div>
+      <div class="chips" style="margin-bottom:12px"><button class="chip ${!p.category ? 'active' : ''}" data-cat="">All</button>${visibleCats().map((c) => `<button class="chip ${p.category === c.key ? 'active' : ''}" data-cat="${c.key}">${c.icon} ${esc(c.label)}</button>`).join('')}</div>
       ${items.length ? `<div class="table-wrap"><table><thead><tr><th>Item</th><th class="hide-m">Spec</th><th class="right">Stock</th><th class="hide-m">Location</th><th></th></tr></thead><tbody>
         ${items.map((it) => `<tr class="clickable" data-id="${it.id}">
           <td><span class="cat-icon">${it.category_icon}</span><span class="item-name">${esc(it.name)}</span>${it.sku ? `<div class="item-sub" style="margin-left:30px">${esc(it.sku)}</div>` : ''}</td>
@@ -757,7 +758,7 @@
     const tab = state.params.tab || 'license';
     const lic = await api('GET', '/license');
     state.meta.license = lic; paintTier();
-    const tabs = [['license', 'License'], ['notifications', 'Notifications'], ['security', 'Security'], ['data', 'Data'], ['general', 'General'], ['updates', 'Updates'], ['about', 'About']];
+    const tabs = [['license', 'License'], ['notifications', 'Notifications'], ['categories', 'Categories'], ['security', 'Security'], ['data', 'Data'], ['general', 'General'], ['updates', 'Updates'], ['about', 'About']];
     view.innerHTML = `<div class="page-head"><div><h1>Settings</h1></div></div>
       <div class="tabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'active' : ''}" data-tab="${k}">${l}</button>`).join('')}</div><div id="tab"></div>`;
     $$('[data-tab]', view).forEach((b) => b.addEventListener('click', () => { location.hash = `#/settings/${b.dataset.tab}`; }));
@@ -826,7 +827,7 @@
 
     if (tab === 'general') {
       pane.innerHTML = `<div class="card" style="max-width:480px"><h2>General</h2><form id="gen-form" class="stack"><label>Workshop name<input type="text" name="site_name" value="${esc(state.meta.settings.site_name)}"></label><label>Currency symbol<input type="text" name="currency" value="${esc(state.meta.settings.currency)}" style="width:80px"></label><label class="check"><input type="checkbox" name="update_check" ${state.meta.settings.update_check ? 'checked' : ''}> Check GitHub for new versions (once a day, anonymous)</label><div class="form-actions"><button class="btn primary">Save</button></div></form></div>
-        <div class="card"><h2>Categories & spec fields</h2><p class="help">Built in. To add or change categories, edit <code>src/categories.ts</code> and rebuild.</p><div class="stack" style="margin-top:10px">${state.meta.categories.map((c) => `<div><b>${c.icon} ${esc(c.label)}</b> <span class="dim">(${esc(c.defaultUnit)})</span><div class="attr-tags">${c.fields.map((f) => `<span>${esc(f.label)}${f.unit ? ' ' + f.unit : ''}</span>`).join('')}</div></div>`).join('')}</div></div>`;
+        <div class="card" style="max-width:480px"><h2>Categories</h2><p class="help">Rename, hide or add item categories and their spec fields under <a href="#/settings/categories">Settings → Categories</a>.</p></div>`;
       $('#gen-form', pane).addEventListener('submit', async (e) => { e.preventDefault(); try { await api('PUT', '/settings', { ...Object.fromEntries(new FormData(e.target).entries()), update_check: e.target.update_check.checked }); toast('Saved', 'ok'); await loadMeta(); render(); } catch (err) { handleErr(err); } });
     }
 
@@ -835,6 +836,17 @@
         <h3 style="margin-top:14px">Quick workflow</h3><ol style="margin:0; padding-left:18px; color:var(--text-2)"><li>Search for a part. None in stock? Click <b>Order</b>.</li><li>When it arrives, mark it <b>Received</b> and pick the drawer cell it lives in.</li><li>Build a project, or hit <b>−</b> when you take some — stock goes down.</li><li>At the alert level you get a notification wherever you've set up.</li></ol>
         <h3 style="margin-top:14px">API</h3><p class="help">Everything the UI does is a JSON call under <code>/api/…</code> — handy for scripts, Home Assistant or a barcode scanner. e.g. <code>POST /api/items/12/adjust {"delta":-3,"reason":"consume","ref":"Spool holder"}</code>.</p>
         <h3 style="margin-top:14px">Updates</h3><p class="help">See <a href="#/settings/updates">Settings → Updates</a> to check for and install new versions.</p></div>`;
+    }
+
+    if (tab === 'categories') {
+      const cats = await api('GET', '/categories');
+      pane.innerHTML = `<div class="card"><h2>Item categories <button class="btn primary sm" id="cat-add">+ Add category</button></h2>
+        <p class="help">The built-in categories are the defaults. Rename them, change the icon or unit, or hide the ones you never use. Add your own categories with their own spec fields — they work everywhere (search, auto-naming, CSV import).</p>
+        <div class="list" style="margin-top:10px">${cats.map((c) => `<div class="list-item ${c.hidden ? 'dim' : ''}"><span style="font-size:20px">${c.icon}</span><div class="grow"><div class="title">${esc(c.label)} ${c.builtin ? '<span class="pill">built-in</span>' : '<span class="pill" style="color:var(--accent-2)">custom</span>'}${c.hidden ? ' <span class="pill">hidden</span>' : ''} <span class="dim" style="font-weight:400">· ${c.item_count} item${c.item_count === 1 ? '' : 's'} · unit ${esc(c.defaultUnit)}</span></div><div class="attr-tags">${c.fields.map((f) => `<span>${esc(f.label)}${f.unit ? ' ' + esc(f.unit) : ''}</span>`).join('') || '<span class="dim">no spec fields</span>'}</div></div><button class="btn sm" data-edit="${c.key}">${c.builtin ? 'Rename' : 'Edit'}</button>${c.builtin && c.key !== 'other' ? `<button class="btn sm ghost" data-hide="${c.key}" data-hidden="${c.hidden ? 1 : 0}">${c.hidden ? 'Show' : 'Hide'}</button>` : ''}${!c.builtin ? `<button class="btn sm ghost" data-del="${c.key}" title="Delete (items move to Other)">✕</button>` : ''}</div>`).join('')}</div></div>`;
+      $('#cat-add', pane).addEventListener('click', () => categoryDialog(null).then((r) => r && loadMeta().then(render)));
+      $$('[data-edit]', pane).forEach((b) => b.addEventListener('click', () => categoryDialog(cats.find((c) => c.key === b.dataset.edit)).then((r) => r && loadMeta().then(render))));
+      $$('[data-hide]', pane).forEach((b) => b.addEventListener('click', async () => { try { await api('PUT', `/categories/${b.dataset.hide}`, { hidden: b.dataset.hidden !== '1' }); await loadMeta(); render(); } catch (e) { handleErr(e); } }));
+      $$('[data-del]', pane).forEach((b) => b.addEventListener('click', async () => { const c = cats.find((x) => x.key === b.dataset.del); if (!confirm(`Delete category "${c.label}"?${c.item_count ? ` Its ${c.item_count} item(s) will move to "Other" (their spec values are kept).` : ''}`)) return; try { await api('DELETE', `/categories/${c.key}`); toast('Category deleted', 'ok'); await loadMeta(); render(); } catch (e) { handleErr(e); } }));
     }
 
     if (tab === 'updates') {
@@ -943,6 +955,45 @@
       setTimeout(tick, offline ? 3000 : 2000);
     };
     setTimeout(tick, 2000);
+  }
+
+  const EMOJI = ['🔩', '🪛', '🔥', '🧵', '⚡', '🧴', '🪵', '📦', '🔧', '🔨', '⚙️', '🧲', '🔋', '💡', '🧪', '🧰', '🪚', '🖨️', '🎨', '🧷', '📎', '🪝', '🛠️', '🔌', '🧯', '🎯', '📐', '🪡', '🧊', '🧹', '🪣', '🏷️'];
+  function categoryDialog(c) {
+    const isNew = !c, builtin = c?.builtin;
+    const fieldRow = (f = {}) => `<tr class="fld"><td><input type="text" name="f_label" value="${esc(f.label || '')}" placeholder="Diameter"></td><td><select name="f_type"><option value="text" ${f.type === 'text' ? 'selected' : ''}>Text</option><option value="number" ${f.type === 'number' ? 'selected' : ''}>Number</option><option value="select" ${f.type === 'select' ? 'selected' : ''}>Choice</option></select></td><td><input type="text" name="f_unit" value="${esc(f.unit || '')}" placeholder="mm" style="width:64px"></td><td><input type="text" name="f_options" value="${esc((f.options || []).join(', '))}" placeholder="for Choice: A, B, C"></td><td><button type="button" class="btn icon ghost" data-rm-row title="Remove">✕</button></td></tr>`;
+    const body = `<form id="cat-form" class="stack">
+      <div class="form">
+        <label class="span-2">Name<input type="text" name="label" value="${esc(c?.label || '')}" placeholder="Bearings" required></label>
+        <label>Icon<input type="text" name="icon" value="${esc(c?.icon || '📦')}" maxlength="4" style="font-size:18px"></label>
+        <label>Default unit<input type="text" name="defaultUnit" value="${esc(c?.defaultUnit || 'pcs')}" list="dl-units2"><datalist id="dl-units2"><option value="pcs"><option value="g"><option value="m"><option value="ml"><option value="sheets"><option value="rolls"><option value="pairs"><option value="sets"></datalist></label>
+        <div class="span-all chips" id="emoji">${EMOJI.map((e) => `<button type="button" class="chip" data-e="${e}">${e}</button>`).join('')}</div>
+      </div>
+      ${builtin ? '<p class="help">Built-in categories keep their spec fields; you can rename, re-icon or change the default unit. Use “Reset” to go back to the default.</p>' : `
+      <h3>Spec fields</h3>
+      <p class="help">The fields shown when adding an item in this category. Numbers can have a unit; a Choice offers a dropdown (free text still allowed).</p>
+      <div class="table-wrap"><table id="fields"><thead><tr><th>Label</th><th>Type</th><th>Unit</th><th>Choices</th><th></th></tr></thead><tbody>${(c?.fields || [{}]).map(fieldRow).join('')}</tbody></table></div>
+      <button type="button" class="btn sm" id="add-row">+ Field</button>
+      <label>Auto-name template <span class="dim">(optional — use {field} placeholders; blank = all field values joined)</span><input type="text" name="nameTemplate" value="${esc(c?.nameTemplate || '')}" placeholder="{inner_diameter}x{outer_diameter}x{width}mm Bearing"></label>`}
+      <div class="form-actions">${builtin && !isNew ? '<button type="button" class="btn" id="cat-reset">Reset to default</button><span class="grow"></span>' : ''}<button type="submit" class="btn primary">${isNew ? 'Add category' : 'Save'}</button></div></form>`;
+    return new Promise((resolve) => {
+      modal(isNew ? 'Add category' : builtin ? `Rename ${c.label}` : `Edit ${c.label}`, body, { size: 'wide', onOpen: (wrap, close) => {
+        const form = $('#cat-form', wrap);
+        $$('[data-e]', wrap).forEach((b) => b.addEventListener('click', () => { form.icon.value = b.dataset.e; }));
+        $('#add-row', wrap)?.addEventListener('click', () => { $('#fields tbody', wrap).insertAdjacentHTML('beforeend', fieldRow()); bindRows(); });
+        const bindRows = () => $$('[data-rm-row]', wrap).forEach((b) => { b.onclick = () => b.closest('tr').remove(); });
+        bindRows();
+        $('#cat-reset', wrap)?.addEventListener('click', async () => { try { await api('POST', `/categories/${c.key}/reset`); toast('Reset', 'ok'); close(); resolve(true); } catch (e) { handleErr(e); } });
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const body = { label: form.label.value, icon: form.icon.value, defaultUnit: form.defaultUnit.value };
+          if (!builtin) {
+            body.nameTemplate = form.nameTemplate.value;
+            body.fields = $$('tr.fld', wrap).map((tr) => ({ label: $('[name=f_label]', tr).value, type: $('[name=f_type]', tr).value, unit: $('[name=f_unit]', tr).value, options: $('[name=f_options]', tr).value })).filter((f) => f.label.trim());
+          }
+          try { isNew ? await api('POST', '/categories', body) : await api('PUT', `/categories/${c.key}`, body); toast('Saved', 'ok'); close(); resolve(true); } catch (err) { handleErr(err); }
+        });
+      } });
+    });
   }
 
   function channelDialog(ch) {

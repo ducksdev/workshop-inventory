@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db, getSetting, setSetting } from '../db.js';
-import { EQUIPMENT_KINDS, categoriesForClient, categoryOrDefault } from '../categories.js';
+import { EQUIPMENT_KINDS, addCategory, categoriesForClient, categoryOrDefault, deleteCategory, isBuiltin, resetCategory, updateCategory } from '../categories.js';
 import { importLicense, licenseStatus, limits, removeLicense } from '../license.js';
 import { CHANNEL_TYPES, broadcast, sendToChannel, type ChannelRow } from '../notify.js';
 import { checkPassword, isAuthed, login, logout, passwordIsSet, setPassword } from '../auth.js';
@@ -62,6 +62,35 @@ system.get('/dashboard', (_req, res) => {
     recent: db.prepare('SELECT m.*, i.name, i.unit FROM movements m JOIN items i ON i.id = m.item_id ORDER BY m.id DESC LIMIT 15').all(),
     by_category: db.prepare('SELECT category, COUNT(*) c FROM items GROUP BY category').all(),
   });
+});
+
+// ---- categories (rename built-ins, add custom) --------------------------------
+
+system.get('/categories', (_req, res) => {
+  const counts = Object.fromEntries((db.prepare('SELECT category, COUNT(*) c FROM items GROUP BY category').all() as { category: string; c: number }[]).map((r) => [r.category, r.c]));
+  res.json(categoriesForClient().map((c) => ({ ...c, item_count: counts[c.key] || 0 })));
+});
+system.post('/categories', (req, res) => {
+  try { const c = addCategory(req.body || {}); res.status(201).json({ key: c.key, categories: categoriesForClient() }); }
+  catch (e) { res.status(400).json({ error: (e as Error).message }); }
+});
+system.put('/categories/:key', (req, res) => {
+  try { updateCategory(req.params.key, req.body || {}); res.json(categoriesForClient()); }
+  catch (e) { res.status(400).json({ error: (e as Error).message }); }
+});
+system.post('/categories/:key/reset', (req, res) => {
+  try { resetCategory(req.params.key); res.json(categoriesForClient()); }
+  catch (e) { res.status(400).json({ error: (e as Error).message }); }
+});
+/** Deleting a custom category moves its items to "Other" (their spec fields are kept). */
+system.delete('/categories/:key', (req, res) => {
+  const key = req.params.key;
+  if (isBuiltin(key)) return res.status(400).json({ error: 'Built-in categories can be hidden but not deleted.' });
+  try {
+    const moved = db.prepare("UPDATE items SET category = 'other', updated_at = datetime('now') WHERE category = ?").run(key).changes;
+    deleteCategory(key);
+    res.json({ moved, categories: categoriesForClient() });
+  } catch (e) { res.status(400).json({ error: (e as Error).message }); }
 });
 
 // ---- alerts -----------------------------------------------------------------

@@ -3,6 +3,11 @@
 Release notes shown to users in **Settings → Updates**. Add a section for each version before running `npm version …`.
 Keep it in plain language — users read this to decide whether to update.
 
+## 1.1.1
+
+- **Custom categories.** Settings → Categories lets you rename the built-in categories (name, icon, default unit), hide ones you don't use, and add your own with their own spec fields and an auto-name template — e.g. a "Bearings" category with inner/outer/width fields that names items "8x22x7mm 2RS Bearing".
+- Hidden categories disappear from the filter chips and the add-item form; existing items in them are unaffected.
+
 ## 1.1.0
 
 - **Equipment.** New section for your 3D printers, CNC, laser, soldering gear and tools: make/model/serial, location, purchase info, status and a run-hours counter you bump after each session.

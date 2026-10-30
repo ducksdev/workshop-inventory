@@ -173,15 +173,139 @@ export const CATEGORIES: Category[] = [
   },
 ];
 
-export const CATEGORY_MAP: Record<string, Category> = Object.fromEntries(CATEGORIES.map((c) => [c.key, c]));
+// ---- user customisation ---------------------------------------------------------
+// Built-ins above are the defaults. Users can rename/re-icon/hide them and add their own
+// categories (with their own spec fields). Both live in the settings table as JSON.
 
-export function categoryOrDefault(key: string | undefined): Category {
-  return (key && CATEGORY_MAP[key]) || CATEGORY_MAP.other;
+import { getSetting, setSetting } from './db.js';
+
+export interface CategoryOverride { label?: string; icon?: string; defaultUnit?: string; hidden?: boolean }
+export interface CustomCategory {
+  key: string; label: string; icon: string; defaultUnit: string; fields: Field[];
+  nameTemplate?: string;   // e.g. "{diameter}mm {material} Bearing"; blank = join all field values
+  compatKeys?: string[];
 }
+
+const BUILTIN_KEYS = new Set(CATEGORIES.map((c) => c.key));
+let cache: { list: Category[]; map: Record<string, Category>; hidden: Set<string> } | null = null;
+
+function readJson<T>(key: string, fallback: T): T {
+  try { return JSON.parse(getSetting(key, '')) as T; } catch { return fallback; }
+}
+export function categoryOverrides(): Record<string, CategoryOverride> { return readJson('category_overrides', {}); }
+export function customCategories(): CustomCategory[] { return readJson('custom_categories', []); }
+export function invalidateCategories() { cache = null; }
+
+function customToCategory(c: CustomCategory): Category {
+  return {
+    key: c.key, label: c.label, icon: c.icon || '📦', defaultUnit: c.defaultUnit || 'pcs', fields: c.fields || [], compatKeys: c.compatKeys,
+    buildName: (a) => {
+      if (c.nameTemplate && c.nameTemplate.trim()) {
+        const out = c.nameTemplate.replace(/\{(\w+)\}/g, (_, k: string) => a[k] || '').replace(/\s+/g, ' ').trim();
+        if (out) return out;
+      }
+      return join((c.fields || []).map((f) => a[f.key])) || c.label;
+    },
+  };
+}
+
+function build() {
+  const ov = categoryOverrides();
+  const hidden = new Set<string>();
+  const list: Category[] = CATEGORIES.map((c) => {
+    const o = ov[c.key] || {};
+    if (o.hidden) hidden.add(c.key);
+    return { ...c, label: o.label || c.label, icon: o.icon || c.icon, defaultUnit: o.defaultUnit || c.defaultUnit };
+  });
+  for (const cc of customCategories()) if (!BUILTIN_KEYS.has(cc.key)) list.push(customToCategory(cc));
+  // keep "Other" last
+  list.sort((a, b) => (a.key === 'other' ? 1 : b.key === 'other' ? -1 : 0));
+  cache = { list, map: Object.fromEntries(list.map((c) => [c.key, c])), hidden };
+  return cache;
+}
+const current = () => cache || build();
+
+/** All categories (built-in with overrides applied, plus custom), including hidden ones. */
+export function allCategories(): Category[] { return current().list; }
+export function getCategory(key: string | undefined): Category | undefined { return key ? current().map[key] : undefined; }
+export function categoryOrDefault(key: string | undefined): Category {
+  return getCategory(key) || current().map.other;
+}
+export function isBuiltin(key: string) { return BUILTIN_KEYS.has(key); }
 
 /** Public, serialisable view of the categories (without the name builder functions). */
 export function categoriesForClient() {
-  return CATEGORIES.map(({ key, label, icon, defaultUnit, fields, compatKeys }) => ({ key, label, icon, defaultUnit, fields, compatKeys: compatKeys || [] }));
+  const { hidden } = current();
+  const customs = Object.fromEntries(customCategories().map((c) => [c.key, c]));
+  return allCategories().map(({ key, label, icon, defaultUnit, fields, compatKeys }) => ({
+    key, label, icon, defaultUnit, fields, compatKeys: compatKeys || [], hidden: hidden.has(key), builtin: BUILTIN_KEYS.has(key),
+    nameTemplate: customs[key]?.nameTemplate || '',
+  }));
+}
+
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32) || 'custom';
+
+function sanitizeFields(raw: unknown): Field[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  return raw.map((f: any) => {
+    const label = String(f?.label || '').trim(); if (!label) return null;
+    let key = slug(String(f?.key || label)); while (seen.has(key)) key += '_2'; seen.add(key);
+    const type: FieldType = f?.type === 'number' ? 'number' : f?.type === 'select' ? 'select' : 'text';
+    const options = type === 'select' ? String(f?.options || '').split(/[,\n]/).map((o: string) => o.trim()).filter(Boolean) : undefined;
+    return { key, label, type, unit: String(f?.unit || '').trim() || undefined, options, placeholder: String(f?.placeholder || '').trim() || undefined } as Field;
+  }).filter(Boolean) as Field[];
+}
+
+/** Rename / re-icon / change unit / hide a built-in, or fully edit a custom category. */
+export function updateCategory(key: string, patch: any): void {
+  if (BUILTIN_KEYS.has(key)) {
+    const ov = categoryOverrides();
+    const o: CategoryOverride = { ...(ov[key] || {}) };
+    if (patch.label !== undefined) o.label = String(patch.label).trim() || undefined;
+    if (patch.icon !== undefined) o.icon = String(patch.icon).trim() || undefined;
+    if (patch.defaultUnit !== undefined) o.defaultUnit = String(patch.defaultUnit).trim() || undefined;
+    if (patch.hidden !== undefined) o.hidden = !!patch.hidden || undefined;
+    if (key === 'other') delete o.hidden; // "Other" is the fallback, it can't be hidden
+    if (Object.keys(o).some((k) => (o as any)[k] !== undefined)) ov[key] = o; else delete ov[key];
+    setSetting('category_overrides', JSON.stringify(ov));
+  } else {
+    const list = customCategories();
+    const i = list.findIndex((c) => c.key === key);
+    if (i < 0) throw new Error('Category not found');
+    const c = list[i];
+    if (patch.label !== undefined) c.label = String(patch.label).trim() || c.label;
+    if (patch.icon !== undefined) c.icon = String(patch.icon).trim() || c.icon;
+    if (patch.defaultUnit !== undefined) c.defaultUnit = String(patch.defaultUnit).trim() || 'pcs';
+    if (patch.fields !== undefined) c.fields = sanitizeFields(patch.fields);
+    if (patch.nameTemplate !== undefined) c.nameTemplate = String(patch.nameTemplate);
+    if (patch.compatKeys !== undefined) c.compatKeys = Array.isArray(patch.compatKeys) ? patch.compatKeys.map(String) : undefined;
+    setSetting('custom_categories', JSON.stringify(list));
+  }
+  invalidateCategories();
+}
+
+export function resetCategory(key: string): void {
+  if (!BUILTIN_KEYS.has(key)) throw new Error('Only built-in categories can be reset');
+  const ov = categoryOverrides(); delete ov[key]; setSetting('category_overrides', JSON.stringify(ov)); invalidateCategories();
+}
+
+export function addCategory(input: any): Category {
+  const label = String(input?.label || '').trim();
+  if (!label) throw new Error('Name is required');
+  let key = slug(String(input?.key || label));
+  const taken = new Set([...BUILTIN_KEYS, ...customCategories().map((c) => c.key)]);
+  let base = key, n = 2; while (taken.has(key)) key = `${base}_${n++}`;
+  const c: CustomCategory = { key, label, icon: String(input?.icon || '📦').trim() || '📦', defaultUnit: String(input?.defaultUnit || 'pcs').trim() || 'pcs', fields: sanitizeFields(input?.fields), nameTemplate: String(input?.nameTemplate || '') };
+  setSetting('custom_categories', JSON.stringify([...customCategories(), c]));
+  invalidateCategories();
+  return getCategory(key)!;
+}
+
+export function deleteCategory(key: string): void {
+  if (BUILTIN_KEYS.has(key)) throw new Error('Built-in categories can be hidden but not deleted');
+  setSetting('custom_categories', JSON.stringify(customCategories().filter((c) => c.key !== key)));
+  invalidateCategories();
 }
 
 /** Equipment kinds, with icons and the part slots we suggest for each. */

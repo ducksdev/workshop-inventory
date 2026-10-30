@@ -54,6 +54,10 @@ When a newer version exists the dashboard tells you. **Settings → Updates** sh
 
 Create a cabinet, then add drawers with a grid (rows × columns) matching your gridfinity baseplate. Every item can sit in a cell like **R3 C9**, and the Locations page draws the drawer so you can see what's where and which cells are free. Click an empty cell to put something in it.
 
+## Categories
+
+Items come in categories with their own spec fields (Hardware: thread, length, head type…; Cutting tools: diameter, flutes…; Nozzles: orifice, material, mount…). Under **Settings → Categories** you can rename or hide the built-in ones and add your own — give the new category its spec fields and, optionally, a naming template like `{inner}x{outer}x{width}mm Bearing`, and items will be named automatically when you leave the name blank.
+
 ## Equipment
 
 Add your printers, CNC, laser and tools under **Equipment**. For each one you can record what's **fitted** (nozzle, bed surface, bit, collet…) straight from stock — fitting takes one from stock, swapping keeps a history, and each slot shows how many compatible spares you have. Keep the **run-hours** counter up to date and set **maintenance tasks** with an interval in hours and/or days; when one comes due you're alerted exactly like low stock.
