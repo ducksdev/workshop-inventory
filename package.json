@@ -33,7 +33,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/OWNER/workshop-inventory.git"
+    "url": "https://github.com/ducksdev/workshop-inventory.git"
   },
   "bin": {
     "workshop-inventory-keygen": "dist/keygen.js"

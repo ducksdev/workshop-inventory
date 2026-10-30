@@ -9,7 +9,7 @@ Self-hosted stock control for your workshop: screws and fasteners, CNC cutting t
 One line, as root. Installs Node.js if needed and sets up a service that starts on boot:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/workshop-inventory/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/ducksdev/workshop-inventory/main/install.sh | sudo bash
 ```
 
 Add `-s -- --port 8080` at the end to change the port. Afterwards:
@@ -28,7 +28,7 @@ Data: `/var/lib/workshop-inventory/inventory.db`. Config: `/etc/default/workshop
 
 ```bash
 mkdir workshop-inventory && cd workshop-inventory
-curl -fsSL https://raw.githubusercontent.com/OWNER/workshop-inventory/main/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/ducksdev/workshop-inventory/main/docker-compose.yml -o docker-compose.yml
 docker compose up -d          # update later with: docker compose pull && docker compose up -d
 ```
 

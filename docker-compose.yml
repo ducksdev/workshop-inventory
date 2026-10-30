@@ -3,7 +3,7 @@
 # Option B (build locally from a release folder): replace `image:` with `build: .`
 services:
   inventory:
-    image: ghcr.io/OWNER/workshop-inventory:latest
+    image: ghcr.io/ducksdev/workshop-inventory:latest
     container_name: workshop-inventory
     ports:
       - "3100:3100"

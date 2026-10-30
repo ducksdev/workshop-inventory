@@ -3,7 +3,7 @@
 # Workshop Inventory — installer / updater for Ubuntu & Debian (systemd)
 #
 #   Install (latest release):
-#     curl -fsSL https://raw.githubusercontent.com/OWNER/workshop-inventory/main/install.sh | sudo bash
+#     curl -fsSL https://raw.githubusercontent.com/ducksdev/workshop-inventory/main/install.sh | sudo bash
 #
 #   Options (after "bash -s --"):
 #     --port 8080            listen port (default 3100; kept on update)
@@ -19,7 +19,7 @@
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
-REPO="${WI_REPO:-OWNER/workshop-inventory}"
+REPO="${WI_REPO:-ducksdev/workshop-inventory}"
 APP_DIR=/opt/workshop-inventory
 DATA_DIR=/var/lib/workshop-inventory
 CONF=/etc/default/workshop-inventory
