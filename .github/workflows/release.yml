@@ -55,13 +55,21 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node scripts/package.mjs
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        run: |
+          V="${{ needs.check.outputs.tag }}"; V="${V#v}"
+          # take the "## <version>" section from CHANGELOG.md, if present
+          awk -v v="$V" '/^## /{p=($2==v)} p && !/^## /{print}' CHANGELOG.md | sed '/./,$!d' > notes.md
+          if [ -s notes.md ]; then echo "found=true" >> "$GITHUB_OUTPUT"; echo "Using CHANGELOG section for $V"; cat notes.md; else echo "found=false" >> "$GITHUB_OUTPUT"; echo "No CHANGELOG section for $V; using auto-generated notes"; fi
       - name: Publish GitHub Release (creates the tag if needed)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.check.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: Workshop Inventory ${{ needs.check.outputs.tag }}
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.found == 'true' && 'notes.md' || '' }}
+          generate_release_notes: ${{ steps.notes.outputs.found != 'true' }}
           files: |
             release/workshop-inventory.tar.gz
             release/workshop-inventory-*.tar.gz

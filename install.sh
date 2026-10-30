@@ -131,10 +131,13 @@ HOST=0.0.0.0
 DATA_DIR=$DATA_DIR
 LICENSE_PUBLIC_KEY=$APP_DIR/keys/public.pem
 NODE_ENV=production
+# The app writes this file to ask for an update; a root systemd path unit then runs the updater.
+UPDATE_TRIGGER=$DATA_DIR/.update-request
 EOF
   ok "Wrote $CONF"
-elif [ -n "$PORT" ]; then
-  sed -i "s/^PORT=.*/PORT=$PORT/" "$CONF"; ok "Set PORT=$PORT in $CONF"
+else
+  [ -n "$PORT" ] && { sed -i "s/^PORT=.*/PORT=$PORT/" "$CONF"; ok "Set PORT=$PORT in $CONF"; }
+  grep -q '^UPDATE_TRIGGER=' "$CONF" || echo "UPDATE_TRIGGER=$DATA_DIR/.update-request" >> "$CONF"
 fi
 # shellcheck disable=SC1090
 . "$CONF"
@@ -164,11 +167,29 @@ case "\${1:-help}" in
     mkdir -p "\$(dirname "\$out")"
     (cd "\$APP_DIR" && "$NODE_BIN" -e "const D=require('better-sqlite3');new D('\$DATA_DIR/inventory.db',{readonly:true}).backup('\$out').then(()=>console.log('Backup written to \$out'))")
     ;;
+  self-update)
+    # Invoked by workshop-inventory-updater.service when the app writes \$DATA_DIR/.update-request.
+    REQ="\$DATA_DIR/.update-request"; ST="\$DATA_DIR/update.status"; LOG="\$DATA_DIR/update.log"
+    TARGET="latest"; [ -f "\$REQ" ] && TARGET="\$(tr -d '[:space:]' < "\$REQ")"; rm -f "\$REQ"
+    FROM="\$(node -p "require('\$APP_DIR/package.json').version" 2>/dev/null || echo unknown)"
+    REQUESTED="\$(node -p "try{JSON.parse(require('fs').readFileSync('\$ST','utf8')).requested||''}catch(e){''}" 2>/dev/null)"
+    STARTED="\$(date -u +%FT%TZ)"
+    wstatus() { printf '{"state":"%s","target":"%s","from":"%s","to":"%s","requested":"%s","started":"%s","finished":"%s","message":"%s"}\n' "\$1" "\$TARGET" "\$FROM" "\$2" "\$REQUESTED" "\$STARTED" "\$(date -u +%FT%TZ)" "\$3" > "\$ST"; chown "\$RUN_USER:\$RUN_USER" "\$ST"; }
+    : > "\$LOG"; chown "\$RUN_USER:\$RUN_USER" "\$LOG"
+    wstatus running "" "Downloading and installing \$TARGET"
+    ARGS=""; case "\$TARGET" in v[0-9]*) ARGS="--version \$TARGET";; esac
+    if "\$0" update \$ARGS >> "\$LOG" 2>&1; then
+      TO="\$(node -p "require('\$APP_DIR/package.json').version" 2>/dev/null || echo unknown)"
+      wstatus success "\$TO" "Updated \$FROM to \$TO"
+    else
+      wstatus failed "" "Update failed - see log"; exit 1
+    fi ;;
   version) node -p "require('\$APP_DIR/package.json').version" ;;
   config)  \${EDITOR:-nano} $CONF && systemctl restart "\$SERVICE" && echo "Restarted with new config." ;;
   *) cat <<USAGE
 workshop-inventory <command>
   update [--version vX.Y.Z]   install the latest (or given) release, keep data & settings
+  self-update                 (used by the in-app "Update now" button via systemd)
   status | logs | restart | stop | start
   backup [file]               consistent copy of the database (default: /var/backups/…)
   config                      edit $CONF and restart
@@ -212,7 +233,31 @@ RestrictSUIDSGID=true
 [Install]
 WantedBy=multi-user.target
 EOF
+  # Updater: the app (unprivileged) writes $DATA_DIR/.update-request; this path unit notices
+  # and runs the updater as root. The app itself never gets root.
+  cat > /etc/systemd/system/$SERVICE-updater.path <<EOF
+[Unit]
+Description=Watch for Workshop Inventory update requests
+
+[Path]
+PathExists=$DATA_DIR/.update-request
+Unit=$SERVICE-updater.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  cat > /etc/systemd/system/$SERVICE-updater.service <<EOF
+[Unit]
+Description=Workshop Inventory self-updater
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/workshop-inventory self-update
+TimeoutStartSec=20min
+EOF
   systemctl daemon-reload
+  systemctl enable --now "$SERVICE-updater.path" >/dev/null 2>&1 || true
   systemctl enable --now "$SERVICE" >/dev/null 2>&1
   sleep 1
   if systemctl is-active --quiet "$SERVICE"; then

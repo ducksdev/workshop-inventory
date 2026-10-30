@@ -5,7 +5,7 @@ import { importLicense, licenseStatus, limits, removeLicense } from '../license.
 import { CHANNEL_TYPES, broadcast, sendToChannel, type ChannelRow } from '../notify.js';
 import { checkPassword, isAuthed, login, logout, passwordIsSet, setPassword } from '../auth.js';
 import { allLocations, buildSearchText, locationPath, shapeItem, type ItemRow } from '../stock.js';
-import { VERSION, checkForUpdate } from '../updates.js';
+import { VERSION, checkForUpdate, requestUpdate, updateStatus } from '../updates.js';
 
 export const system = Router();
 const str = (v: unknown) => (v === undefined || v === null ? '' : String(v)).trim();
@@ -28,6 +28,18 @@ system.get('/meta', (req, res) => {
 /** GET /api/update-check[?force=1] — cached lookup of the latest GitHub release. */
 system.get('/update-check', async (req, res) => {
   res.json(await checkForUpdate(str(req.query.force) === '1'));
+});
+
+/** GET /api/update-status — progress of a self-update (service installs). */
+system.get('/update-status', (_req, res) => res.json(updateStatus()));
+
+/** POST /api/update { target?: "latest" | "v1.2.0" } — ask the system updater to install a release. */
+system.post('/update', async (req, res) => {
+  try {
+    const info = await checkForUpdate(true);
+    if (!info.update_available && !req.body?.force) return res.status(400).json({ error: 'You are already on the latest version.' });
+    res.json(requestUpdate(str(req.body?.target) || (info.latest ? 'v' + info.latest : 'latest')));
+  } catch (e) { res.status(400).json({ error: (e as Error).message }); }
 });
 
 system.get('/dashboard', (_req, res) => {

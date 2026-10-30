@@ -36,7 +36,11 @@ docker compose up -d          # update later with: docker compose pull && docker
 
 Download the `.zip` from the Releases page, unzip, and double-click `start.bat` (Windows) or run `./start.sh` (Mac). Needs Node.js 20+ from https://nodejs.org. Data is in the `data` folder next to the app.
 
-In every case the app prints its address — normally http://localhost:3100. From your phone on the same Wi-Fi use `http://<server-ip>:3100`. When a newer version exists, the dashboard tells you.
+In every case the app prints its address — normally http://localhost:3100. From your phone on the same Wi-Fi use `http://<server-ip>:3100`.
+
+### Updating
+
+When a newer version exists the dashboard tells you. **Settings → Updates** shows what's new; on a server install there's an **Update now** button that installs it and restarts for you (your data and settings are kept). Docker: `docker compose pull && docker compose up -d`. Desktop: download the new zip over the old folder.
 
 ## The basic workflow
 

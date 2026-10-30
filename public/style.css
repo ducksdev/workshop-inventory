@@ -234,3 +234,10 @@ pre.code { background: var(--bg); border: 1px solid var(--line); border-radius: 
   th, td { padding: 8px 9px; }
   .hide-m { display: none; }
 }
+
+/* ---- release notes ------------------------------------------------------- */
+.notes { color: var(--text-2); font-size: 13.5px; }
+.notes h4 { margin: 12px 0 4px; color: var(--text); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+.notes ul { margin: 4px 0 8px; padding-left: 20px; } .notes li { margin: 3px 0; }
+.notes p { margin: 4px 0; } .notes code { background: var(--bg-3); padding: 1px 5px; border-radius: 4px; }
+details summary::-webkit-details-marker { color: var(--text-3); }

@@ -1,6 +1,6 @@
 {
   "name": "workshop-inventory",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Self-hosted workshop inventory for makers: hardware, cutting tools, 3D-printer nozzles, filament and more. Gridfinity-aware locations, BOM builds, low-stock alerts, offline licensing.",
   "private": true,
   "type": "module",

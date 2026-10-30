@@ -383,7 +383,7 @@
       if (!u.update_available || sessionStorage.getItem('wi-hide-update') === u.latest) return;
       const box = document.createElement('div');
       box.className = 'alert-box info row between'; box.style.marginBottom = '14px';
-      box.innerHTML = `<span>⬆️ <b>Version ${esc(u.latest)}</b> is available (you have ${esc(u.current)}). On the server run <code>sudo workshop-inventory update</code>. <a href="${esc(u.url)}" target="_blank" rel="noopener">Release notes ↗</a></span><button class="btn sm ghost">Later</button>`;
+      box.innerHTML = `<span>⬆️ <b>Version ${esc(u.latest)}</b> is available (you have ${esc(u.current)}).</span><span class="row"><a class="btn sm primary" href="#/settings/updates">See what's new & update</a><button class="btn sm ghost">Later</button></span>`;
       $('button', box).addEventListener('click', () => { sessionStorage.setItem('wi-hide-update', u.latest); box.remove(); });
       $('.page-head', view).after(box);
     }).catch(() => {});
@@ -607,7 +607,7 @@
     const tab = state.params.tab || 'license';
     const lic = await api('GET', '/license');
     state.meta.license = lic; paintTier();
-    const tabs = [['license', 'License'], ['notifications', 'Notifications'], ['security', 'Security'], ['data', 'Data'], ['general', 'General'], ['about', 'About']];
+    const tabs = [['license', 'License'], ['notifications', 'Notifications'], ['security', 'Security'], ['data', 'Data'], ['general', 'General'], ['updates', 'Updates'], ['about', 'About']];
     view.innerHTML = `<div class="page-head"><div><h1>Settings</h1></div></div>
       <div class="tabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'active' : ''}" data-tab="${k}">${l}</button>`).join('')}</div><div id="tab"></div>`;
     $$('[data-tab]', view).forEach((b) => b.addEventListener('click', () => { location.hash = `#/settings/${b.dataset.tab}`; }));
@@ -684,17 +684,116 @@
       pane.innerHTML = `<div class="card" style="max-width:640px"><h2>Workshop Inventory ${esc(state.meta.version)}</h2><p>Self-hosted stock control for makers: fasteners, cutting tools, 3D-printer nozzles, filament, electronics and consumables, with gridfinity-aware locations, project BOMs and low-stock alerts.</p>
         <h3 style="margin-top:14px">Quick workflow</h3><ol style="margin:0; padding-left:18px; color:var(--text-2)"><li>Search for a part. None in stock? Click <b>Order</b>.</li><li>When it arrives, mark it <b>Received</b> and pick the drawer cell it lives in.</li><li>Build a project, or hit <b>−</b> when you take some — stock goes down.</li><li>At the alert level you get a notification wherever you've set up.</li></ol>
         <h3 style="margin-top:14px">API</h3><p class="help">Everything the UI does is a JSON call under <code>/api/…</code> — handy for scripts, Home Assistant or a barcode scanner. e.g. <code>POST /api/items/12/adjust {"delta":-3,"reason":"consume","ref":"Spool holder"}</code>.</p>
-        <h3 style="margin-top:14px">Updates</h3><div id="upd" class="help">Checking…</div></div>`;
-      api('GET', '/update-check?force=1').then((u) => {
-        const el = $('#upd', pane);
-        if (!u.enabled) el.innerHTML = 'Update checks are turned off (Settings → General).';
-        else if (!u.repo) el.innerHTML = 'No update source configured in this build.';
-        else if (u.error) el.innerHTML = `Couldn't reach GitHub: ${esc(u.error)}`;
-        else if (u.update_available) el.innerHTML = `<div class="alert-box info"><b>Version ${esc(u.latest)} is available</b> (installed: ${esc(u.current)}).<br>On the server: <code>sudo workshop-inventory update</code> — or re-run the install command.<br><a href="${esc(u.url)}" target="_blank" rel="noopener">Release notes ↗</a></div>`;
-        else el.innerHTML = `You're on the latest version (${esc(u.current)}).`;
-      }).catch(() => { $('#upd', pane).textContent = 'Update check failed.'; });
+        <h3 style="margin-top:14px">Updates</h3><p class="help">See <a href="#/settings/updates">Settings → Updates</a> to check for and install new versions.</p></div>`;
+    }
+
+    if (tab === 'updates') {
+      pane.innerHTML = '<div class="card" style="max-width:720px" id="upd-card"><h2>Updates</h2><div class="help">Checking GitHub…</div></div>';
+      renderUpdates($('#upd-card', pane));
     }
   };
+
+  /** Tiny Markdown → HTML for GitHub release notes (headings, lists, bold, code, links). */
+  function mdToHtml(md) {
+    const inline = (t) => esc(t)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (m, pre, url) => `${pre}<a href="${url}" target="_blank" rel="noopener">${url.replace(/^https?:\/\/(www\.)?/, '').replace(/^github\.com\/[^/]+\/[^/]+\/(pull|issues)\//, '#')}</a>`);
+    const out = []; let list = null;
+    const flush = () => { if (list) { out.push(`<ul>${list.join('')}</ul>`); list = null; } };
+    for (const raw of md.replace(/\r/g, '').split('\n')) {
+      const line = raw.trimEnd();
+      const h = line.match(/^(#{1,6})\s+(.*)/); const li = line.match(/^\s*[-*+]\s+(.*)/);
+      if (h) { flush(); out.push(`<h4>${inline(h[2])}</h4>`); }
+      else if (li) { (list = list || []).push(`<li>${inline(li[1])}</li>`); }
+      else if (!line.trim()) { flush(); }
+      else { flush(); out.push(`<p>${inline(line)}</p>`); }
+    }
+    flush();
+    return out.join('');
+  }
+
+  const fmtIso = (s) => (s ? new Date(s).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '');
+
+  async function renderUpdates(card, force = true) {
+    let u, st;
+    try { [u, st] = await Promise.all([api('GET', `/update-check${force ? '?force=1' : ''}`), api('GET', '/update-status')]); }
+    catch (e) { card.innerHTML = `<h2>Updates</h2><div class="alert-box bad">${esc(e.message)}</div>`; return; }
+
+    const busy = st.state === 'requested' || st.state === 'running';
+    const modeHelp = {
+      service: '',
+      docker: `<p class="help">This copy runs in Docker, so update it from the host:</p><pre class="code">docker compose pull && docker compose up -d</pre>`,
+      manual: `<p class="help">This copy was installed from the zip. Download the new version, unzip it over this folder (your <code>data</code> folder is untouched) and restart.</p>`,
+    }[u.install_mode];
+
+    let body = `<h2>Updates <span class="pill">installed: v${esc(u.current)}</span></h2>`;
+    if (!u.enabled) body += `<div class="alert-box info">Update checks are turned off. Turn them on under <a href="#/settings/general">Settings → General</a>, or check manually below.</div>`;
+    if (!u.repo) body += `<div class="alert-box warn">This build has no update source configured.</div>`;
+    else if (u.error) body += `<div class="alert-box warn">Couldn't reach GitHub: ${esc(u.error)}</div>`;
+    else if (u.update_available) {
+      body += `<div class="alert-box info" style="margin-bottom:12px"><b>Version ${esc(u.latest)} is available</b>${u.published_at ? ` · released ${fmtIso(u.published_at)}` : ''}. <a href="${esc(u.url)}" target="_blank" rel="noopener">View on GitHub ↗</a></div>`;
+      body += `<h3>What's new in ${esc(u.latest)}</h3><div class="notes">${u.notes ? mdToHtml(u.notes) : '<p class="dim">No release notes were written for this version.</p>'}</div>`;
+      body += modeHelp;
+    } else {
+      body += `<div class="alert-box ok">You're on the latest version (v${esc(u.current)}).${u.checked_at ? ` <span class="dim">Checked ${fmtIso(u.checked_at)}.</span>` : ''}</div>`;
+      if (u.notes) body += `<details style="margin-top:12px"><summary class="help" style="cursor:pointer">Release notes for v${esc(u.current)}</summary><div class="notes">${mdToHtml(u.notes)}</div></details>`;
+    }
+
+    // progress / last result
+    if (busy) {
+      body += `<div class="alert-box info" style="margin-top:14px"><b>⏳ ${st.state === 'requested' ? 'Update requested — waiting for the updater to start…' : esc(st.message || 'Updating…')}</b><br><span class="dim">The app will restart; this page reconnects automatically.</span></div>`;
+    } else if (st.state === 'success' && st.finished) {
+      body += `<div class="alert-box ok" style="margin-top:14px">✓ ${esc(st.message || 'Updated')} <span class="dim">· ${fmtIso(st.finished)}</span></div>`;
+    } else if (st.state === 'failed') {
+      body += `<div class="alert-box bad" style="margin-top:14px"><b>✗ ${esc(st.message || 'The last update failed')}</b>${st.finished ? ` <span class="dim">· ${fmtIso(st.finished)}</span>` : ''}<br><span class="dim">You can retry, or run <code>sudo workshop-inventory update</code> on the server to see the full output.</span></div>`;
+    }
+    if (st.log && st.log.length && (busy || st.state === 'failed')) body += `<details ${st.state === 'failed' ? 'open' : ''} style="margin-top:10px"><summary class="help" style="cursor:pointer">Updater log</summary><pre class="code" id="upd-log" style="max-height:220px; overflow:auto">${esc(st.log.join('\n'))}</pre></details>`;
+
+    body += `<div class="row" style="margin-top:16px; gap:8px">`;
+    if (u.update_available && u.install_mode === 'service' && !busy) body += `<button class="btn primary" id="upd-now">⬆️ Update to v${esc(u.latest)} now</button>`;
+    if (u.update_available && u.install_mode === 'manual' && u.url) body += `<a class="btn primary" href="${esc(u.url)}" target="_blank" rel="noopener">Download v${esc(u.latest)} ↗</a>`;
+    body += `<button class="btn" id="upd-check" ${busy ? 'disabled' : ''}>Check again</button></div>`;
+    card.innerHTML = body;
+
+    $('#upd-check', card).addEventListener('click', () => { card.querySelector('#upd-check').textContent = 'Checking…'; renderUpdates(card, true); });
+    $('#upd-now', card)?.addEventListener('click', async () => {
+      if (!confirm(`Update to v${u.latest} now?\n\nThe app will be unavailable for a minute or two while it installs and restarts. Your data is kept.`)) return;
+      try { await api('POST', '/update', { target: 'v' + u.latest }); toast('Update started', 'ok'); watchUpdate(card, u.current); } catch (e) { handleErr(e); }
+    });
+    if (busy) watchUpdate(card, st.from || u.current);
+  }
+
+  /** Poll while the updater runs; survive the restart; reload when the new version is up. */
+  function watchUpdate(card, fromVersion) {
+    if (card._watching) return; card._watching = true;
+    const started = Date.now(); let offline = false;
+    const tick = async () => {
+      if (!document.body.contains(card)) return;
+      try {
+        const meta = await fetch('/api/meta').then((r) => r.json());
+        if (offline || meta.version !== fromVersion) {
+          // server is back (or already swapped)
+          const st = await api('GET', '/update-status').catch(() => ({ state: 'idle', log: [] }));
+          if (meta.version !== fromVersion) {
+            toast(`Updated to v${meta.version}`, 'ok', 6000);
+            card._watching = false; await loadMeta(); renderUpdates(card, false); return;
+          }
+          if (st.state === 'failed' || st.state === 'idle') { card._watching = false; renderUpdates(card, false); return; }
+        } else {
+          const st = await api('GET', '/update-status');
+          if (st.state === 'failed') { card._watching = false; renderUpdates(card, false); return; }
+          if (st.state === 'success' && st.to === fromVersion) { card._watching = false; renderUpdates(card, false); return; } // re-installed same version
+          const logEl = $('#upd-log', card); if (logEl && st.log) { logEl.textContent = st.log.join('\n'); logEl.scrollTop = logEl.scrollHeight; }
+          else if (st.log?.length && !logEl) { const d = document.createElement('details'); d.open = true; d.style.marginTop = '10px'; d.innerHTML = `<summary class="help" style="cursor:pointer">Updater log</summary><pre class="code" id="upd-log" style="max-height:220px; overflow:auto">${esc(st.log.join('\n'))}</pre>`; card.querySelector('.row')?.before(d); }
+        }
+      } catch { offline = true; const b = card.querySelector('.alert-box.info b'); if (b) b.textContent = '⏳ Restarting with the new version…'; }
+      if (Date.now() - started > 20 * 60 * 1000) { card._watching = false; toast('The update is taking unusually long — check `sudo workshop-inventory logs` on the server.', 'warn', 8000); return; }
+      setTimeout(tick, offline ? 3000 : 2000);
+    };
+    setTimeout(tick, 2000);
+  }
 
   function channelDialog(ch) {
     const types = state.meta.channel_types;
